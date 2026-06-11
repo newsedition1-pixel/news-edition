@@ -189,7 +189,7 @@ export default async function HomePage() {
                   <Link key={cat.slug} href={`/${cat.slug}`} className={styles.categoryItem}>
                     <span className={styles.categoryDot} style={{ background: cat.color ?? undefined }} />
                     <span>{cat.name}</span>
-                    <span className={styles.categoryCount}>{cat.articleCount}</span>
+
                   </Link>
                 ))}
               </div>
