@@ -1,22 +1,45 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { formatBytes } from '@/lib/utils'
 import styles from './AssetsManager.module.scss'
 import type { Asset } from '@/lib/db/schema'
 
-interface Props {
-  assets: Asset[]
+export interface AssetUsage {
+  id: number
+  title: string
+  status: string
+  inCover: boolean
+  inContent: boolean
 }
 
-export function AssetsManager({ assets: initialAssets }: Props) {
+interface Props {
+  assets: Asset[]
+  usage: Record<number, AssetUsage[]>
+}
+
+type Filter = 'all' | 'used' | 'unused'
+
+export function AssetsManager({ assets: initialAssets, usage }: Props) {
   const [assets, setAssets] = useState(initialAssets)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [copied, setCopied] = useState<number | null>(null)
   const [deleting, setDeleting] = useState<number | null>(null)
   const [selected, setSelected] = useState<Asset | null>(null)
+  const [filter, setFilter] = useState<Filter>('all')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const usageFor = (asset: Asset): AssetUsage[] => usage[asset.id] ?? []
+
+  const visibleAssets = useMemo(() => {
+    if (filter === 'all') return assets
+    return assets.filter((a) => {
+      const used = (usage[a.id]?.length ?? 0) > 0
+      return filter === 'used' ? used : !used
+    })
+  }, [assets, usage, filter])
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -49,7 +72,13 @@ export function AssetsManager({ assets: initialAssets }: Props) {
   }
 
   const deleteAsset = async (asset: Asset) => {
-    if (!confirm(`Delete "${asset.name}"?`)) return
+    const refs = usageFor(asset)
+    const warning = refs.length
+      ? `⚠️ "${asset.name}" is used in ${refs.length} article${refs.length > 1 ? 's' : ''}:\n\n${refs
+          .map((r) => `• ${r.title}`)
+          .join('\n')}\n\nDeleting it will break those images. Delete anyway?`
+      : `Delete "${asset.name}"?`
+    if (!confirm(warning)) return
     setDeleting(asset.id)
     try {
       const res = await fetch(`/api/assets/${asset.id}`, { method: 'DELETE' })
@@ -60,6 +89,11 @@ export function AssetsManager({ assets: initialAssets }: Props) {
       setDeleting(null)
     }
   }
+
+  const counts = useMemo(() => {
+    const used = assets.filter((a) => (usage[a.id]?.length ?? 0) > 0).length
+    return { all: assets.length, used, unused: assets.length - used }
+  }, [assets, usage])
 
   return (
     <div className={styles.layout}>
@@ -74,51 +108,81 @@ export function AssetsManager({ assets: initialAssets }: Props) {
         {uploadError && <p className={styles.error}>{uploadError}</p>}
       </div>
 
+      {/* Filter tabs */}
+      <div className={styles.filterBar}>
+        {(['all', 'used', 'unused'] as Filter[]).map((f) => (
+          <button
+            key={f}
+            type="button"
+            className={`${styles.filterTab} ${filter === f ? styles.filterActive : ''}`}
+            onClick={() => setFilter(f)}
+          >
+            {f === 'all' ? 'All' : f === 'used' ? 'In use' : 'Unused'}
+            <span className={styles.filterCount}>{counts[f]}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Grid */}
       <div className={styles.grid}>
-        {assets.length === 0 && (
-          <div className={styles.empty}>No assets uploaded yet. Upload your first image above.</div>
-        )}
-        {assets.map((asset) => (
-          <div
-            key={asset.id}
-            className={`${styles.assetCard} ${selected?.id === asset.id ? styles.selectedCard : ''}`}
-            onClick={() => setSelected(selected?.id === asset.id ? null : asset)}
-          >
-            <div className={styles.thumb}>
-              {asset.url && (
-                <Image src={asset.url} alt={asset.name} fill style={{ objectFit: 'cover' }} sizes="160px" />
-              )}
-            </div>
-            <div className={styles.assetInfo}>
-              <p className={styles.assetName}>{asset.name}</p>
-              <p className={styles.assetMeta}>
-                {asset.width && asset.height ? `${asset.width}×${asset.height} · ` : ''}
-                {asset.size ? formatBytes(asset.size) : ''}
-              </p>
-            </div>
-            <div className={styles.assetActions}>
-              <button
-                type="button"
-                className={`${styles.actionBtn} ${copied === asset.id ? styles.copied : ''}`}
-                onClick={(e) => { e.stopPropagation(); copyUrl(asset) }}
-                title="Copy URL"
-              >
-                {copied === asset.id ? '✓' : '📋'}
-              </button>
-              <a href={asset.url} target="_blank" rel="noopener noreferrer" className={styles.actionBtn} onClick={(e) => e.stopPropagation()} title="Open">↗</a>
-              <button
-                type="button"
-                className={`${styles.actionBtn} ${styles.deleteAction}`}
-                onClick={(e) => { e.stopPropagation(); deleteAsset(asset) }}
-                disabled={deleting === asset.id}
-                title="Delete"
-              >
-                🗑
-              </button>
-            </div>
+        {visibleAssets.length === 0 && (
+          <div className={styles.empty}>
+            {filter === 'unused'
+              ? 'No unused assets — every image is referenced by an article.'
+              : filter === 'used'
+                ? 'No assets are currently used in any article.'
+                : 'No assets uploaded yet. Upload your first image above.'}
           </div>
-        ))}
+        )}
+        {visibleAssets.map((asset) => {
+          const refs = usageFor(asset)
+          return (
+            <div
+              key={asset.id}
+              className={`${styles.assetCard} ${selected?.id === asset.id ? styles.selectedCard : ''}`}
+              onClick={() => setSelected(selected?.id === asset.id ? null : asset)}
+            >
+              <div className={styles.thumb}>
+                {asset.url && (
+                  <Image src={asset.url} alt={asset.name} fill style={{ objectFit: 'cover' }} sizes="160px" />
+                )}
+                <span
+                  className={`${styles.usageBadge} ${refs.length ? styles.usageUsed : styles.usageUnused}`}
+                  title={refs.length ? refs.map((r) => r.title).join('\n') : 'Not used by any article'}
+                >
+                  {refs.length ? `Used ×${refs.length}` : 'Unused'}
+                </span>
+              </div>
+              <div className={styles.assetInfo}>
+                <p className={styles.assetName}>{asset.name}</p>
+                <p className={styles.assetMeta}>
+                  {asset.width && asset.height ? `${asset.width}×${asset.height} · ` : ''}
+                  {asset.size ? formatBytes(asset.size) : ''}
+                </p>
+              </div>
+              <div className={styles.assetActions}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${copied === asset.id ? styles.copied : ''}`}
+                  onClick={(e) => { e.stopPropagation(); copyUrl(asset) }}
+                  title="Copy URL"
+                >
+                  {copied === asset.id ? '✓' : '📋'}
+                </button>
+                <a href={asset.url} target="_blank" rel="noopener noreferrer" className={styles.actionBtn} onClick={(e) => e.stopPropagation()} title="Open">↗</a>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.deleteAction}`}
+                  onClick={(e) => { e.stopPropagation(); deleteAsset(asset) }}
+                  disabled={deleting === asset.id}
+                  title="Delete"
+                >
+                  🗑
+                </button>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Detail panel */}
@@ -138,6 +202,33 @@ export function AssetsManager({ assets: initialAssets }: Props) {
                 {copied === selected.id ? 'Copied!' : 'Copy'}
               </button>
             </div>
+          </div>
+
+          {/* Usage — which articles reference this image */}
+          <div className={styles.usageSection}>
+            <p className={styles.usageHeading}>
+              Used in {usageFor(selected).length} article{usageFor(selected).length === 1 ? '' : 's'}
+            </p>
+            {usageFor(selected).length === 0 ? (
+              <p className={styles.usageEmpty}>
+                Not referenced by any article — safe to delete.
+              </p>
+            ) : (
+              <ul className={styles.usageList}>
+                {usageFor(selected).map((ref) => (
+                  <li key={ref.id} className={styles.usageItem}>
+                    <Link href={`/admin/articles/${ref.id}/edit`} className={styles.usageLink}>
+                      <span className={styles.usageTitle}>{ref.title}</span>
+                      <span className={styles.usageTags}>
+                        <span className={`${styles.statusTag} ${styles[`status_${ref.status}`] ?? ''}`}>{ref.status}</span>
+                        {ref.inCover && <span className={styles.roleTag}>cover</span>}
+                        {ref.inContent && <span className={styles.roleTag}>in&nbsp;body</span>}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       )}

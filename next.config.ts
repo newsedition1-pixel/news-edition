@@ -11,8 +11,11 @@ const nextConfig: NextConfig = {
     additionalData: `${variables}\n${mixins}\n`,
   },
   images: {
-    formats: ['image/avif', 'image/webp'],
-    minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
+    // Bypass Vercel's image optimizer — Cloudinary handles optimization on its
+    // own CDN (see src/lib/imageLoader.ts). This keeps Vercel's metered
+    // "Image Optimization - Transformations" usage at zero.
+    loader: 'custom',
+    loaderFile: './src/lib/imageLoader.ts',
     remotePatterns: [
       { hostname: 'res.cloudinary.com' },
       { hostname: 'lh3.googleusercontent.com' },
