@@ -149,9 +149,49 @@ export default async function HomePage() {
   const { breaking, featured, latest, cats, sections } = await getHomeData()
   const featuredArticle = featured[0] ? mapArticle(featured[0] as unknown as Record<string, unknown>) : null
   const latestArticles = latest.map(r => mapArticle(r as unknown as Record<string, unknown>))
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
+
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'NewsMediaOrganization',
+    name: 'NewsEdition',
+    url: siteUrl,
+    logo: {
+      '@type': 'ImageObject',
+      url: `${siteUrl}/logo.png`,
+      width: 200,
+      height: 60,
+    },
+    sameAs: [
+      'https://newsedition.medium.com',
+      'https://t.me/newsedition',
+      'https://www.linkedin.com/company/newsedition-in',
+      'https://x.com/NewsEdition_1',
+      'https://www.facebook.com/newsedition/',
+      'https://www.instagram.com/news_edition1',
+      'https://www.youtube.com/@newsedition1',
+    ],
+  }
+
+  const websiteSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'NewsEdition',
+    url: siteUrl,
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: `${siteUrl}/search?q={search_term_string}`,
+      },
+      'query-input': 'required name=search_term_string',
+    },
+  }
 
   return (
     <PublicLayout>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }} />
       {breaking.length > 0 && <BreakingTicker articles={breaking} />}
 
       <div className={styles.page}>
