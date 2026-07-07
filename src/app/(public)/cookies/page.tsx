@@ -4,6 +4,7 @@ import styles from '../static.module.scss'
 export const metadata: Metadata = {
   title: 'Cookie Policy',
   description: 'NewsEdition Cookie Policy — how we use cookies and similar tracking technologies, including Google Analytics and Google AdSense.',
+  alternates: { canonical: '/cookies' },
 }
 
 export default function CookiesPage() {

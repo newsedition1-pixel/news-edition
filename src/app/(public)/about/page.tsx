@@ -4,6 +4,7 @@ import styles from '../static.module.scss'
 export const metadata: Metadata = {
   title: 'About Us',
   description: 'NewsEdition is an independent Indian digital news platform focused on business, politics, and all major stories that shape India and the world. Founded in 2024 by Amit Gautam.',
+  alternates: { canonical: '/about' },
 }
 
 const SOCIAL = [

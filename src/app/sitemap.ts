@@ -1,7 +1,8 @@
 import type { MetadataRoute } from 'next'
 import { db } from '@/lib/db'
-import { articles, categories } from '@/lib/db/schema'
+import { articles, categories, users } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { slugify } from '@/lib/utils'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
 
@@ -16,13 +17,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       return getFallbackSitemap()
     }
 
-    const [publishedArticles, activeCategories] = await Promise.all([
+    const [publishedArticles, activeCategories, activeAuthors] = await Promise.all([
       db.select({ slug: articles.slug, updatedAt: articles.updatedAt, publishedAt: articles.publishedAt })
         .from(articles)
         .where(eq(articles.status, 'published')),
       db.select({ slug: categories.slug, updatedAt: categories.updatedAt })
         .from(categories)
         .where(eq(categories.isActive, true)),
+      db.selectDistinct({ id: users.id, name: users.name })
+        .from(users)
+        .innerJoin(articles, eq(articles.authorId, users.id))
+        .where(eq(articles.status, 'published')),
     ])
 
     const staticRoutes: MetadataRoute.Sitemap = [
@@ -43,7 +48,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.9,
     }))
 
-    return [...staticRoutes, ...categoryRoutes, ...articleRoutes]
+    const authorRoutes: MetadataRoute.Sitemap = activeAuthors.map((a) => ({
+      url: `${siteUrl}/author/${a.id}/${slugify(a.name)}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.5,
+    }))
+
+    return [...staticRoutes, ...categoryRoutes, ...articleRoutes, ...authorRoutes]
   } catch (error) {
     console.error('Sitemap generation error:', error)
     return getFallbackSitemap()

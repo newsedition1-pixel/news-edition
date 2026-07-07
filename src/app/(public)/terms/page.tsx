@@ -4,6 +4,7 @@ import styles from '../static.module.scss'
 export const metadata: Metadata = {
   title: 'Terms of Service',
   description: 'NewsEdition Terms of Service — the rules governing your use of our platform.',
+  alternates: { canonical: '/terms' },
 }
 
 export default function TermsPage() {

@@ -4,6 +4,7 @@ import styles from '../static.module.scss'
 export const metadata: Metadata = {
   title: 'Contact Us',
   description: 'Get in touch with NewsEdition. Reach us by email, phone, or visit our office in Connaught Place, New Delhi.',
+  alternates: { canonical: '/contact' },
 }
 
 const EmailIcon = () => (

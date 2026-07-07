@@ -10,11 +10,45 @@ import styles from './(public)/page.module.scss'
 import type { ArticleWithRelations } from '@/types'
 
 export const metadata: Metadata = {
-  title: 'NewsEdition — Breaking News, Latest Updates',
+  title: { absolute: 'NewsEdition — Breaking News, Latest Updates' },
   description: 'Your trusted source for breaking news, in-depth analysis, and comprehensive coverage.',
+  alternates: { canonical: '/' },
 }
 
 export const dynamic = 'force-dynamic'
+
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
+
+const organizationLd = {
+  '@context': 'https://schema.org',
+  '@type': 'NewsMediaOrganization',
+  '@id': `${siteUrl}/#organization`,
+  name: 'NewsEdition',
+  url: siteUrl,
+  logo: { '@type': 'ImageObject', url: `${siteUrl}/logo.png`, width: 200, height: 60 },
+  sameAs: [
+    'https://x.com/NewsEdition_1',
+    'https://www.facebook.com/share/1BUCfxBKxD/?mibextid=wwXIfr',
+    'https://www.instagram.com/news_edition1',
+    'https://youtube.com/@newsedition1',
+    'https://www.linkedin.com/in/news-edition-980094413/',
+  ],
+}
+
+const websiteLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  '@id': `${siteUrl}/#website`,
+  name: 'NewsEdition',
+  url: siteUrl,
+  inLanguage: 'en',
+  publisher: { '@id': `${siteUrl}/#organization` },
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: { '@type': 'EntryPoint', urlTemplate: `${siteUrl}/search?q={search_term_string}` },
+    'query-input': 'required name=search_term_string',
+  },
+}
 
 const ARTICLE_FIELDS = {
   id: articles.id, title: articles.title, slug: articles.slug,
@@ -152,9 +186,13 @@ export default async function HomePage() {
 
   return (
     <PublicLayout>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteLd) }} />
+
       {breaking.length > 0 && <BreakingTicker articles={breaking} />}
 
       <div className={styles.page}>
+        <h1 className={styles.srOnly}>NewsEdition — Breaking News, Latest Updates</h1>
         {featuredArticle && (
           <section className={styles.hero} aria-label="Featured article">
             <div className={styles.heroInner}>

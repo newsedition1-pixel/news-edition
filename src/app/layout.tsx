@@ -37,7 +37,6 @@ export const metadata: Metadata = {
     siteName,
     title: `${siteName} — Breaking News, Latest Updates`,
     description: 'Your trusted source for breaking news and in-depth analysis.',
-    images: [{ url: '/opengraph-image.jpg', width: 1200, height: 630, alt: siteName }],
   },
   twitter: {
     card: 'summary_large_image',
@@ -45,7 +44,6 @@ export const metadata: Metadata = {
     description: 'Your trusted source for breaking news and in-depth analysis.',
     site: '@newsedition',
   },
-  alternates: { canonical: siteUrl },
   verification: { google: '8Iz3f_2karh5jShQV1mprOLbpZ_Fvs3ZpOAP1HICFBc' },
 }
 

@@ -4,6 +4,7 @@ import styles from '../static.module.scss'
 export const metadata: Metadata = {
   title: 'Advertise With Us',
   description: 'Reach thousands of engaged readers across India. Advertise on NewsEdition at very competitive rates. Contact us to get started.',
+  alternates: { canonical: '/advertise' },
 }
 
 const PERKS = [

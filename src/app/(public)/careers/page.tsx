@@ -4,6 +4,7 @@ import styles from '../static.module.scss'
 export const metadata: Metadata = {
   title: 'Careers',
   description: 'Join the NewsEdition team. We are looking for passionate interns in news publishing and marketing. Apply today.',
+  alternates: { canonical: '/careers' },
 }
 
 const OPENINGS = [

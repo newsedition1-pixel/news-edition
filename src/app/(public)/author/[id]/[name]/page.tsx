@@ -52,7 +52,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!author) return { title: 'Author Not Found' }
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
   return {
-    title: `${author.name} — NewsEdition`,
+    title: author.name,
     description: author.bio || `All articles published by ${author.name} on NewsEdition`,
     alternates: { canonical: `${siteUrl}/author/${id}/${slugify(author.name)}` },
   }
