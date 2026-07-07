@@ -223,9 +223,9 @@ Must be in **separate files** from `'use client'` components. Never co-locate `'
 Variables (`_variables.scss`) and mixins (`_mixins.scss`) are injected via `sassOptions.additionalData` in `next.config.ts` — available in every `.scss` file without importing.
 
 ### Theming
-- Theme stored in a cookie (`theme=dark|light`)
-- Server reads cookie, sets `data-theme` attribute on `<html>` in root layout
-- No flash of wrong theme — fully SSR
+- Theme stored in `localStorage` (`theme=dark|light`), falls back to `prefers-color-scheme`
+- A blocking inline script in the root layout sets `data-theme` on `<html>` before first paint — no flash of wrong theme
+- IMPORTANT: never read `cookies()`/`headers()` in the root layout — it forces every page to render dynamically and disables ISR/static caching sitewide (this is why the theme is applied client-side)
 
 ### Image Upload Flow
 1. Client POSTs file to `/api/upload`

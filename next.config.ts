@@ -34,6 +34,14 @@ const nextConfig: NextConfig = {
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
         ],
       },
+      {
+        // LCP background image — cache forever so repeat views paint instantly.
+        // If the image ever changes, rename the file (and its references).
+        source: '/lcp-bg.jpg',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
     ]
   },
 }

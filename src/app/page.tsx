@@ -16,7 +16,10 @@ export const metadata: Metadata = {
   alternates: { canonical: '/' },
 }
 
-export const dynamic = 'force-dynamic'
+// ISR: served from cache, regenerated at most every 60s. Publishing,
+// unpublishing, or deleting an article purges this immediately via
+// revalidatePath('/') in the articles API (same pattern as home-sections).
+export const revalidate = 60
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
 
@@ -211,8 +214,10 @@ export default async function HomePage() {
               <Link href="/search" className={styles.sectionLink}>View all →</Link>
             </div>
             <div className={styles.grid}>
-              {latestArticles.slice(0, 9).map((article, i) => (
-                <ArticleCard key={article.id} article={article} priority={i < 3} />
+              {latestArticles.slice(0, 9).map((article) => (
+                // No priority: these preloads competed with /lcp-bg.jpg (the
+                // LCP element) for bandwidth; only the hero keeps priority.
+                <ArticleCard key={article.id} article={article} />
               ))}
             </div>
             {latestArticles.length === 0 && (

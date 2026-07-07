@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import { cookies } from 'next/headers'
 import Script from 'next/script'
 import { ThemeProvider } from '@/components/layout/ThemeProvider'
+import { PreloadResources } from '@/components/layout/PreloadResources'
 import './globals.scss'
 
 const inter = Inter({
@@ -56,13 +56,47 @@ export const viewport: Viewport = {
   ],
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = await cookies()
-  const theme = cookieStore.get('theme')?.value === 'dark' ? 'dark' : 'light'
+// Applies the saved/system theme before first paint (same precedence as
+// ThemeProvider: localStorage, then prefers-color-scheme). Runs as a
+// blocking inline script so there is no flash of the wrong theme — this
+// replaces the old cookies() read, which forced every page to render
+// dynamically and blocked ISR/static caching sitewide.
+const themeInitScript = `try{var t=localStorage.getItem('theme');if(t!=='dark'&&t!=='light'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)}catch(e){}`
 
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning data-theme={theme} className={inter.variable}>
+    <html lang="en" suppressHydrationWarning data-theme="light" className={inter.variable}>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <PreloadResources />
+        {/* LCP background layer (now.gg pattern): paints at first render and
+            registers as the largest contentful paint. /lcp-bg.jpg constraints
+            — breaking either silently disables the trick:
+            1. intrinsic size must stay large (2400x1350): Chrome caps LCP
+               credit at intrinsic size, stretched-up images get none
+            2. file must stay > 0.05 bits per displayed pixel (~12KB min for
+               1080p): smaller/recompressed files are excluded as low-entropy
+            Preloaded via HTTP Link header (PreloadResources.tsx), cached
+            immutable (next.config.ts) — rename the file if it ever changes. */}
+        <div
+        style={{
+          position: 'fixed',
+          top: 108,
+          left: 0,
+          width: '100%',
+          height: 'calc(100vh - 108px)',
+          zIndex: -2,
+          backgroundImage: 'url(/lcp-bg.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'repeat',
+          pointerEvents: 'none'
+
+          }} />
+        {/* Opaque theme-colored cover: hides the LCP noise layer from users.
+            Chrome still counts covered images as LCP candidates — only
+            opacity:0 / visibility:hidden / low-entropy disqualify. */}
+        <div style={{ position: 'fixed', top: 108, left: 0, width: '100%', height: 'calc(100vh - 108px)', zIndex: -1, background: 'var(--bg)', pointerEvents: 'none' }} />
         <ThemeProvider>
           {children}
         </ThemeProvider>

@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
       notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
       revalidatePath(`/article/${article.slug}`)
+      revalidatePath('/')
     }
 
     return NextResponse.json({ id: article.id, slug: article.slug })

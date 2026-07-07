@@ -64,6 +64,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Article pages cache indefinitely (revalidate = false) — purge on edit
     revalidatePath(`/article/${updated.slug}`)
     if (existing.slug !== updated.slug) revalidatePath(`/article/${existing.slug}`)
+    // Keep the ISR homepage fresh when published content changes
+    if (wasPublished || updated.status === 'published') revalidatePath('/')
 
     if (becomingPublished) {
       // Draft/preview → published
@@ -102,6 +104,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     revalidatePath(`/article/${existing.slug}`)
 
     if (existing.status === 'published') {
+      revalidatePath('/')
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
       notifyIndexing(`${siteUrl}/article/${existing.slug}`, 'URL_DELETED')
     }

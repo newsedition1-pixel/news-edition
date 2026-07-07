@@ -18,7 +18,10 @@ export async function PublicLayout({ children }: { children: React.ReactNode }) 
     <>
       <Header categories={cats} />
       <main id="main-content">{children}</main>
+
       <Footer categories={cats} />
+      {/* The LCP background layer (noise div + theme-colored cover) lives in
+          the root layout — see src/app/layout.tsx. */}
     </>
   )
 }
