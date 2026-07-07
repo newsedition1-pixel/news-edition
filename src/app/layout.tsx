@@ -70,15 +70,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <PreloadResources />
         {/* LCP background layer (now.gg pattern): paints at first render and
-            registers as the largest contentful paint. /lcp-bg.jpg constraints
-            — breaking either silently disables the trick:
-            1. intrinsic size must stay large (2400x1350): Chrome caps LCP
+            registers as the largest contentful paint. Mobile uses a 7KB
+            data-URI image inlined in the CSS (ready at first paint); desktop
+            (>=1024px) loads /lcp-bg.jpg (see .lcp-layer in globals.scss —
+            its media query must match the preload below). Constraints —
+            breaking either silently disables the trick:
+            1. intrinsic size must exceed the displayed box: Chrome caps LCP
                credit at intrinsic size, stretched-up images get none
-            2. file must stay > 0.05 bits per displayed pixel (~12KB min for
-               1080p): smaller/recompressed files are excluded as low-entropy
-            Preloaded via HTTP Link header (PreloadResources.tsx), cached
-            immutable (next.config.ts) — rename the file if it ever changes. */}
+            2. file must stay > 0.05 bits per displayed pixel: smaller or
+               recompressed files are excluded as low-entropy
+            Cached immutable (next.config.ts) — rename files if they change. */}
+        <link rel="preload" as="image" href="/lcp-bg.jpg" media="(min-width: 1024px)" fetchPriority="high" />
         <div
+        className="lcp-layer"
         style={{
           position: 'fixed',
           top: 108,
@@ -86,10 +90,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           width: '100%',
           height: 'calc(100vh - 108px)',
           zIndex: -2,
-          backgroundImage: 'url(/lcp-bg.jpg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'repeat',
           pointerEvents: 'none'
 
           }} />

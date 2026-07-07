@@ -35,9 +35,9 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // LCP background image — cache forever so repeat views paint instantly.
-        // If the image ever changes, rename the file (and its references).
-        source: '/lcp-bg.jpg',
+        // LCP background images — cache forever so repeat views paint
+        // instantly. If an image ever changes, rename the file (and refs).
+        source: '/:file(lcp-bg.*\\.jpg)',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],

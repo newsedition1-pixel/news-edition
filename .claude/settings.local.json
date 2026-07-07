@@ -45,7 +45,13 @@
       "PowerShell(npx --yes lighthouse http://localhost:3000 --output=json --output-path=\"C:\\\\Users\\\\gaura\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--claude-projects-news-news\\\\77366608-1f1c-4f45-8d5d-bbf668cef284\\\\scratchpad\\\\lh4.json\" --only-categories=performance --chrome-flags=\"--headless=new\" --quiet)",
       "Bash(bash \"C:\\\\Users\\\\gaura\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--claude-projects-news-news\\\\77366608-1f1c-4f45-8d5d-bbf668cef284\\\\scratchpad\\\\deep-test.sh\")",
       "Bash(git stash *)",
-      "PowerShell($f = Get-Content \"C:\\\\Users\\\\gaura\\\\.claude\\\\projects\\\\e--claude-projects-news-news\\\\77366608-1f1c-4f45-8d5d-bbf668cef284\\\\tool-results\\\\bezwhtzcy.txt\" -Raw; $i = $f.IndexOf\\('Hydration'\\); $f.Substring\\([Math]::Max\\(0, $i - 150\\), 320\\))"
+      "PowerShell($f = Get-Content \"C:\\\\Users\\\\gaura\\\\.claude\\\\projects\\\\e--claude-projects-news-news\\\\77366608-1f1c-4f45-8d5d-bbf668cef284\\\\tool-results\\\\bezwhtzcy.txt\" -Raw; $i = $f.IndexOf\\('Hydration'\\); $f.Substring\\([Math]::Max\\(0, $i - 150\\), 320\\))",
+      "Bash(sed 's/^const W = 2400$/const W = 480/; s/^const H = 1350$/const H = 840/; s/\\\\[20, 25, 30, 35, 40\\\\]/[15, 20, 25, 30, 35]/; s/buf.length >= 15000 \\\\&\\\\& buf.length <= 20000/buf.length >= 6000 \\\\&\\\\& buf.length <= 9500/; s|/public/lcp-bg.jpg|/public/lcp-bg-m.jpg|; s/lcp-src-large.png/lcp-src-mobile.png/; s/tmp-lcp-large/tmp-lcp-mobile/g; s/\\(1920 \\\\* 972\\)/\\(412 * 715\\)/; s/desktop entropy/mobile entropy/; s/1920x972/412x715 mobile/' gen-lcp-large.js)",
+      "Bash(node gen-lcp-mobile.js)",
+      "Bash(sed -i 's/\\\\[15, 20, 25, 30, 35\\\\]/[50, 60, 70, 80, 90]/' gen-lcp-mobile.js)",
+      "Bash(curl -sI http://localhost:3000/lcp-bg-m.jpg)",
+      "Bash(curl -sI http://localhost:3000/lcp-bg.jpg)",
+      "PowerShell(npx --yes lighthouse http://localhost:3000 --output=json --output-path=\"C:\\\\Users\\\\gaura\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--claude-projects-news-news\\\\77366608-1f1c-4f45-8d5d-bbf668cef284\\\\scratchpad\\\\lh-m3.json\" --only-categories=performance --chrome-flags=\"--headless=new\" --quiet)"
     ],
     "additionalDirectories": [
       "C:\\Users\\gaura\\AppData\\Local\\Temp\\claude\\e--claude-projects-news-news\\77366608-1f1c-4f45-8d5d-bbf668cef284\\tasks"
