@@ -27,11 +27,13 @@ const organizationLd = {
   url: siteUrl,
   logo: { '@type': 'ImageObject', url: `${siteUrl}/logo.png`, width: 200, height: 60 },
   sameAs: [
+    'https://newsedition.medium.com',
+    'https://t.me/newsedition',
+    'https://www.linkedin.com/company/newsedition-in',
     'https://x.com/NewsEdition_1',
-    'https://www.facebook.com/share/1BUCfxBKxD/?mibextid=wwXIfr',
+    'https://www.facebook.com/newsedition/',
     'https://www.instagram.com/news_edition1',
-    'https://youtube.com/@newsedition1',
-    'https://www.linkedin.com/in/news-edition-980094413/',
+    'https://www.youtube.com/@newsedition1',
   ],
 }
 
