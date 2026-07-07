@@ -162,6 +162,43 @@
   line-height: 1.8;
 }
 
+.faqSection {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+  padding-top: $space-4;
+  border-top: 1px solid var(--border);
+}
+
+.faqTitle {
+  font-size: $text-xl;
+  font-weight: $font-bold;
+  color: var(--text-primary);
+}
+
+.faqItem {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: $radius-xl;
+  overflow: hidden;
+
+  &[open] .faqQuestion { border-bottom: 1px solid var(--border); }
+}
+
+.faqQuestion {
+  padding: $space-3 $space-4;
+  font-size: $text-base;
+  font-weight: $font-semibold;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.faqAnswer {
+  padding: $space-3 $space-4;
+  line-height: $leading-relaxed;
+  color: var(--text-secondary);
+}
+
 .tags {
   display: flex;
   flex-wrap: wrap;

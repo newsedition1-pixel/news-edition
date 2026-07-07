@@ -56,6 +56,17 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
+export function sanitizeFaqs(input: unknown): { question: string; answer: string }[] | null {
+  if (!Array.isArray(input)) return null
+  const cleaned = input
+    .filter((f): f is { question: string; answer: string } =>
+      !!f && typeof f === 'object' && typeof (f as Record<string, unknown>).question === 'string' && typeof (f as Record<string, unknown>).answer === 'string')
+    .map((f) => ({ question: f.question.trim().slice(0, 300), answer: f.answer.trim().slice(0, 2000) }))
+    .filter((f) => f.question && f.answer)
+    .slice(0, 20)
+  return cleaned.length > 0 ? cleaned : null
+}
+
 export function generateUniqueSlug(base: string, existing: string[]): string {
   let slug = slugify(base)
   if (!existing.includes(slug)) return slug

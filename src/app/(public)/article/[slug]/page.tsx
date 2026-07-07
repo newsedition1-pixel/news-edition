@@ -22,7 +22,7 @@ async function getArticle(slug: string) {
     coverImage: articles.coverImage, coverImageAlt: articles.coverImageAlt,
     coverImagePublicId: articles.coverImagePublicId,
     status: articles.status, isFeatured: articles.isFeatured,
-    isBreaking: articles.isBreaking, tags: articles.tags,
+    isBreaking: articles.isBreaking, tags: articles.tags, faqs: articles.faqs,
     seoTitle: articles.seoTitle, seoDescription: articles.seoDescription,
     viewCount: articles.viewCount, publishedAt: articles.publishedAt,
     createdAt: articles.createdAt, updatedAt: articles.updatedAt,
@@ -86,7 +86,7 @@ export default async function ArticlePage({ params }: Props) {
     excerpt: row.excerpt, coverImage: row.coverImage, coverImageAlt: row.coverImageAlt,
     coverImagePublicId: row.coverImagePublicId, status: row.status as 'published',
     isFeatured: row.isFeatured, isBreaking: row.isBreaking, tags: row.tags,
-    seoTitle: row.seoTitle, seoDescription: row.seoDescription,
+    faqs: row.faqs, seoTitle: row.seoTitle, seoDescription: row.seoDescription,
     viewCount: row.viewCount, publishedAt: row.publishedAt,
     createdAt: row.createdAt, updatedAt: row.updatedAt,
     category: row.categoryId ? { id: row.categoryId, name: row.categoryName!, slug: row.categorySlug!, color: row.categoryColor! } : null,
@@ -158,6 +158,17 @@ export default async function ArticlePage({ params }: Props) {
     articleSection: article.category?.name,
   }
 
+  const faqs = article.faqs ?? []
+  const faqLd = faqs.length > 0 ? {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((f) => ({
+      '@type': 'Question',
+      name: f.question,
+      acceptedAnswer: { '@type': 'Answer', text: f.answer },
+    })),
+  } : null
+
   const breadcrumbLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -172,6 +183,7 @@ export default async function ArticlePage({ params }: Props) {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
+      {faqLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }} />}
 
       <div className={styles.page}>
         <article className={styles.article}>
@@ -252,6 +264,21 @@ export default async function ArticlePage({ params }: Props) {
                 <Link key={tag} href={`/search?q=${encodeURIComponent(tag)}`} className={styles.tag}>{tag}</Link>
               ))}
             </div>
+          )}
+
+          {/* FAQ */}
+          {faqs.length > 0 && (
+            <section className={styles.faqSection} aria-label="Frequently asked questions">
+              <h2 className={styles.faqTitle}>Frequently Asked Questions</h2>
+              <div className={styles.faqList}>
+                {faqs.map((faq, i) => (
+                  <details key={i} className={styles.faqItem}>
+                    <summary className={styles.faqQuestion}>{faq.question}</summary>
+                    <p className={styles.faqAnswer}>{faq.answer}</p>
+                  </details>
+                ))}
+              </div>
+            </section>
           )}
 
           <div className={styles.shareBottom}>

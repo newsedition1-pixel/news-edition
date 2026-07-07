@@ -43,6 +43,7 @@ export default async function EditArticlePage({ params }: Props) {
     isFeatured: article.isFeatured,
     isBreaking: article.isBreaking,
     tags: article.tags ?? [],
+    faqs: article.faqs ?? [],
     seoTitle: article.seoTitle ?? '',
     seoDescription: article.seoDescription ?? '',
     publishedAt: article.publishedAt ? article.publishedAt.toISOString() : null,

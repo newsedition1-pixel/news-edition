@@ -1,6 +1,6 @@
 import {
   pgTable, text, boolean, timestamp, integer, serial,
-  varchar, uniqueIndex,
+  varchar, uniqueIndex, jsonb,
 } from 'drizzle-orm/pg-core'
 
 // ─── Better Auth Core Tables ──────────────────────────────────────────────────
@@ -94,6 +94,7 @@ export const articles = pgTable('articles', {
   isFeatured: boolean('isFeatured').notNull().default(false),
   isBreaking: boolean('isBreaking').notNull().default(false),
   tags: text('tags').array(),
+  faqs: jsonb('faqs').$type<{ question: string; answer: string }[]>(),
   seoTitle: varchar('seoTitle', { length: 200 }),
   seoDescription: text('seoDescription'),
   viewCount: integer('viewCount').notNull().default(0),

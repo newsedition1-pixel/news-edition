@@ -21,6 +21,7 @@ interface ArticleEditorProps {
     isFeatured: boolean
     isBreaking: boolean
     tags: string[]
+    faqs: { question: string; answer: string }[]
     seoTitle: string
     seoDescription: string
     publishedAt: string | null
@@ -32,7 +33,8 @@ const DEFAULT_DATA = {
   title: '', slug: '', content: '', excerpt: '',
   coverImage: null as string | null, coverImageAlt: '', coverImagePublicId: null as string | null,
   categoryId: null as number | null, status: 'draft', isFeatured: false, isBreaking: false,
-  tags: [] as string[], seoTitle: '', seoDescription: '', publishedAt: null as string | null,
+  tags: [] as string[], faqs: [] as { question: string; answer: string }[],
+  seoTitle: '', seoDescription: '', publishedAt: null as string | null,
 }
 
 function slugify(text: string) {
@@ -77,6 +79,12 @@ export function ArticleEditor({ articleId, initialData, categories }: ArticleEdi
   }
 
   const removeTag = (tag: string) => set('tags', data.tags.filter((t) => t !== tag))
+
+  const addFaq = () => set('faqs', [...data.faqs, { question: '', answer: '' }])
+  const removeFaq = (index: number) => set('faqs', data.faqs.filter((_, i) => i !== index))
+  const updateFaq = (index: number, key: 'question' | 'answer', value: string) => {
+    set('faqs', data.faqs.map((f, i) => (i === index ? { ...f, [key]: value } : f)))
+  }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -241,6 +249,43 @@ export function ArticleEditor({ articleId, initialData, categories }: ArticleEdi
               />
               <div className={styles.charCount}>{data.seoDescription.length}/300</div>
             </div>
+          </div>
+        </details>
+
+        {/* FAQ */}
+        <details className={styles.seoSection} open={data.faqs.length > 0}>
+          <summary className={styles.seoToggle}>FAQ ({data.faqs.length})</summary>
+          <div className={styles.seoFields}>
+            <p className={styles.hint}>
+              Shown at the end of the article and emitted as FAQPage structured data for search engines and AI answers.
+            </p>
+            {data.faqs.map((faq, i) => (
+              <div key={i} className={styles.faqItem}>
+                <div className={styles.faqHeader}>
+                  <label className={styles.label}>FAQ {i + 1}</label>
+                  <button type="button" className={styles.faqRemove} onClick={() => removeFaq(i)} title="Remove FAQ">✕</button>
+                </div>
+                <input
+                  type="text"
+                  value={faq.question}
+                  onChange={(e) => updateFaq(i, 'question', e.target.value)}
+                  placeholder="Question…"
+                  className={styles.input}
+                  maxLength={300}
+                />
+                <textarea
+                  value={faq.answer}
+                  onChange={(e) => updateFaq(i, 'answer', e.target.value)}
+                  placeholder="Answer…"
+                  className={styles.textarea}
+                  rows={3}
+                  maxLength={2000}
+                />
+              </div>
+            ))}
+            <button type="button" className={styles.addFaqBtn} onClick={addFaq} disabled={data.faqs.length >= 20}>
+              + Add FAQ
+            </button>
           </div>
         </details>
       </div>

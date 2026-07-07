@@ -3,7 +3,8 @@ import { requireAdmin } from '@/lib/dal'
 import { db } from '@/lib/db'
 import { articles, categories } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { slugify } from '@/lib/utils'
+import { revalidatePath } from 'next/cache'
+import { slugify, sanitizeFaqs } from '@/lib/utils'
 import { notifyIndexing } from '@/lib/googleIndexing'
 
 export async function POST(request: NextRequest) {
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     const {
       title, content, excerpt, coverImage, coverImageAlt, coverImagePublicId,
-      categoryId, status, isFeatured, isBreaking, tags,
+      categoryId, status, isFeatured, isBreaking, tags, faqs,
       seoTitle, seoDescription, publishedAt, slug: customSlug,
     } = body
 
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
       isFeatured: Boolean(isFeatured),
       isBreaking: Boolean(isBreaking),
       tags: tags?.length ? tags : null,
+      faqs: sanitizeFaqs(faqs),
       seoTitle: seoTitle?.trim() || null,
       seoDescription: seoDescription?.trim() || null,
       publishedAt: status === 'published' ? (publishedAt ? new Date(publishedAt) : now) : null,
@@ -53,6 +55,7 @@ export async function POST(request: NextRequest) {
     if (article.status === 'published') {
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
       notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
+      revalidatePath(`/article/${article.slug}`)
     }
 
     return NextResponse.json({ id: article.id, slug: article.slug })

@@ -175,6 +175,53 @@
 }
 
 
+.faqSection {
+  margin-bottom: $space-8;
+  padding-top: $space-6;
+  border-top: 1px solid var(--border);
+}
+
+.faqTitle {
+  font-size: $text-xl;
+  font-weight: $font-bold;
+  color: var(--text-primary);
+  margin-bottom: $space-4;
+}
+
+.faqList {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+}
+
+.faqItem {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: $radius-xl;
+  overflow: hidden;
+
+  &[open] .faqQuestion { border-bottom: 1px solid var(--border); }
+}
+
+.faqQuestion {
+  padding: $space-4;
+  font-size: $text-base;
+  font-weight: $font-semibold;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: color $transition-fast;
+
+  &:hover { color: var(--color-primary); }
+  &::marker { color: var(--color-primary); }
+}
+
+.faqAnswer {
+  padding: $space-4;
+  font-size: $text-base;
+  line-height: $leading-relaxed;
+  color: var(--text-secondary);
+}
+
 .shareBottom {
   padding-top: $space-6;
   border-top: 1px solid var(--border);

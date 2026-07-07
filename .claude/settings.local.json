@@ -12,7 +12,8 @@
       "Bash(Get-ChildItem -Path \"e:\\\\claude-projects\\\\news\\\\news\\\\src\\\\app\" -Recurse -Filter \"page.tsx\")",
       "Bash(Select-Object FullName)",
       "PowerShell(npm run build)",
-      "PowerShell(git add src/app/news-sitemap.xml/route.ts src/app/page.tsx)"
+      "PowerShell(git add src/app/news-sitemap.xml/route.ts src/app/page.tsx)",
+      "PowerShell(npm run db:push)"
     ]
   }
 }

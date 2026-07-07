@@ -3,7 +3,8 @@ import { requireAdmin } from '@/lib/dal'
 import { db } from '@/lib/db'
 import { articles } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { slugify } from '@/lib/utils'
+import { revalidatePath } from 'next/cache'
+import { slugify, sanitizeFaqs } from '@/lib/utils'
 import { deleteFromCloudinary } from '@/lib/cloudinary'
 import { notifyIndexing } from '@/lib/googleIndexing'
 
@@ -20,7 +21,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json()
     const {
       title, content, excerpt, coverImage, coverImageAlt, coverImagePublicId,
-      categoryId, status, isFeatured, isBreaking, tags,
+      categoryId, status, isFeatured, isBreaking, tags, faqs,
       seoTitle, seoDescription, publishedAt, slug: customSlug,
     } = body
 
@@ -50,6 +51,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : existing.isFeatured,
       isBreaking: isBreaking !== undefined ? Boolean(isBreaking) : existing.isBreaking,
       tags: tags !== undefined ? (tags?.length ? tags : null) : existing.tags,
+      faqs: faqs !== undefined ? sanitizeFaqs(faqs) : existing.faqs,
       seoTitle: seoTitle?.trim() || null,
       seoDescription: seoDescription?.trim() || null,
       publishedAt: resolvedPublishedAt,
@@ -58,6 +60,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
     const articleUrl = `${siteUrl}/article/${updated.slug}`
+
+    // Article pages cache indefinitely (revalidate = false) — purge on edit
+    revalidatePath(`/article/${updated.slug}`)
+    if (existing.slug !== updated.slug) revalidatePath(`/article/${existing.slug}`)
 
     if (becomingPublished) {
       // Draft/preview → published
@@ -92,6 +98,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     await db.delete(articles).where(eq(articles.id, articleId))
+
+    revalidatePath(`/article/${existing.slug}`)
 
     if (existing.status === 'published') {
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'

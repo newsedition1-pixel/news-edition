@@ -24,7 +24,8 @@ export default async function ArticlePreviewPage({ params }: Props) {
       content: articles.content, excerpt: articles.excerpt,
       coverImage: articles.coverImage, coverImageAlt: articles.coverImageAlt,
       status: articles.status, isFeatured: articles.isFeatured, isBreaking: articles.isBreaking,
-      tags: articles.tags, publishedAt: articles.publishedAt, updatedAt: articles.updatedAt,
+      tags: articles.tags, faqs: articles.faqs,
+      publishedAt: articles.publishedAt, updatedAt: articles.updatedAt,
       categoryName: categories.name, categoryColor: categories.color, categorySlug: categories.slug,
       authorName: users.name, authorImage: users.image,
     })
@@ -94,6 +95,19 @@ export default async function ArticlePreviewPage({ params }: Props) {
             className={`${styles.content} article-content`}
             dangerouslySetInnerHTML={{ __html: row.content }}
           />
+
+          {/* FAQ */}
+          {row.faqs && row.faqs.length > 0 && (
+            <section className={styles.faqSection}>
+              <h2 className={styles.faqTitle}>Frequently Asked Questions</h2>
+              {row.faqs.map((faq, i) => (
+                <details key={i} className={styles.faqItem} open>
+                  <summary className={styles.faqQuestion}>{faq.question}</summary>
+                  <p className={styles.faqAnswer}>{faq.answer}</p>
+                </details>
+              ))}
+            </section>
+          )}
 
           {/* Tags */}
           {row.tags && row.tags.length > 0 && (

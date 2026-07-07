@@ -213,6 +213,52 @@
   gap: $space-4;
 }
 
+.faqItem {
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+  padding: $space-3;
+  border: 1px solid var(--border);
+  border-radius: $radius-lg;
+  background: var(--bg-secondary);
+}
+
+.faqHeader {
+  @include flex-between;
+}
+
+.faqRemove {
+  width: 24px;
+  height: 24px;
+  border-radius: $radius-md;
+  color: var(--text-muted);
+  font-size: $text-sm;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: rgba(220,38,38,0.1);
+    color: $color-danger;
+  }
+}
+
+.addFaqBtn {
+  align-self: flex-start;
+  padding: $space-2 $space-4;
+  border: 1.5px dashed var(--border);
+  border-radius: $radius-lg;
+  color: var(--text-secondary);
+  font-size: $text-sm;
+  font-weight: $font-medium;
+  transition: all $transition-fast;
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
 // Sidebar
 .sidebar {
   display: flex;

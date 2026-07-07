@@ -2,6 +2,11 @@ export type Role = 'owner' | 'admin' | 'user'
 export type ArticleStatus = 'draft' | 'preview' | 'published'
 export type CommentStatus = 'pending' | 'approved' | 'rejected'
 
+export interface ArticleFaq {
+  question: string
+  answer: string
+}
+
 export interface ArticleWithRelations {
   id: number
   title: string
@@ -15,6 +20,7 @@ export interface ArticleWithRelations {
   isFeatured: boolean
   isBreaking: boolean
   tags: string[] | null
+  faqs?: ArticleFaq[] | null
   seoTitle: string | null
   seoDescription: string | null
   viewCount: number
