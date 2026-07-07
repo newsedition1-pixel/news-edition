@@ -227,6 +227,10 @@
   border-top: 1px solid var(--border);
 }
 
+.newsletterWrap {
+  margin-top: $space-8;
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 .sidebar { display: none; @include lg { display: block; } }
 

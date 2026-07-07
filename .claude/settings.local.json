@@ -13,7 +13,12 @@
       "Bash(Select-Object FullName)",
       "PowerShell(npm run build)",
       "PowerShell(git add src/app/news-sitemap.xml/route.ts src/app/page.tsx)",
-      "PowerShell(npm run db:push)"
+      "PowerShell(npm run db:push)",
+      "PowerShell($token = \\(Select-String -Path .env.local -Pattern '^MAILERLITE_API_KEY=\\(.+\\)$'\\).Matches[0].Groups[1].Value; try { $r = Invoke-RestMethod -Uri 'https://connect.mailerlite.com/api/groups?limit=25' -Headers @{ Authorization = \"Bearer $token\"; Accept = 'application/json' } -Method Get; $r.data | Select-Object id, name, active_count | Format-Table -AutoSize } catch { \"ERROR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell($token = \\(Select-String -Path .env.local -Pattern '^MAILERLITE_API_KEY=\\(.+\\)$'\\).Matches[0].Groups[1].Value; \"token length: $\\($token.Length\\)\"; try { $resp = Invoke-WebRequest -Uri 'https://connect.mailerlite.com/api/groups?limit=25' -Headers @{ Authorization = \"Bearer $token\"; Accept = 'application/json' } -Method Get -UseBasicParsing; \"HTTP $\\($resp.StatusCode\\)\"; $resp.Content } catch { \"ERROR: $\\($_.Exception.Message\\)\"; if \\($_.Exception.Response\\) { \"HTTP $\\([int]$_.Exception.Response.StatusCode\\)\" } })",
+      "PowerShell($token = \\(Select-String -Path .env.local -Pattern '^MAILERLITE_API_KEY=\\(.+\\)$'\\).Matches[0].Groups[1].Value; try { $r = Invoke-RestMethod -Uri 'https://connect.mailerlite.com/api/groups' -Headers @{ Authorization = \"Bearer $token\"; Accept = 'application/json'; 'Content-Type' = 'application/json' } -Method Post -Body '{\"name\":\"Website signups\"}'; \"Created group id: $\\($r.data.id\\) name: $\\($r.data.name\\)\" } catch { \"ERROR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell($body = '{\"email\":\"gauravkr2506+newsletter-test@gmail.com\"}'; try { $r = Invoke-RestMethod -Uri 'http://localhost:3000/api/newsletter' -Method Post -ContentType 'application/json' -Body $body; \"Route response: $\\($r | ConvertTo-Json -Compress\\)\" } catch { \"ERROR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell($token = \\(Select-String -Path .env.local -Pattern '^MAILERLITE_API_KEY=\\(.+\\)$'\\).Matches[0].Groups[1].Value; try { $r = Invoke-RestMethod -Uri 'https://connect.mailerlite.com/api/subscribers/gauravkr2506%2Bnewsletter-test%40gmail.com' -Headers @{ Authorization = \"Bearer $token\"; Accept = 'application/json' } -Method Get; \"email: $\\($r.data.email\\)  status: $\\($r.data.status\\)  groups: $\\(\\($r.data.groups | ForEach-Object { $_.name }\\) -join ', '\\)\" } catch { \"ERROR: $\\($_.Exception.Message\\)\" })"
     ]
   }
 }

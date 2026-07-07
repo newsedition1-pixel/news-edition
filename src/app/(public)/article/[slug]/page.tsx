@@ -7,6 +7,7 @@ import { articles, categories, users, comments } from '@/lib/db/schema'
 import { eq, and, desc, ne } from 'drizzle-orm'
 import { ShareButtons } from '@/components/news/ShareButtons'
 import { ArticleCard } from '@/components/news/ArticleCard'
+import { NewsletterSignup } from '@/components/news/NewsletterSignup'
 import { formatDate, slugify } from '@/lib/utils'
 import styles from './page.module.scss'
 import type { ArticleWithRelations } from '@/types'
@@ -283,6 +284,10 @@ export default async function ArticlePage({ params }: Props) {
 
           <div className={styles.shareBottom}>
             <ShareButtons title={article.title} url={articleUrl} />
+          </div>
+
+          <div className={styles.newsletterWrap}>
+            <NewsletterSignup />
           </div>
         </article>
 

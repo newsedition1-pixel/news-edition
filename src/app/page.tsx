@@ -6,6 +6,7 @@ import { eq, desc, and, sql, asc } from 'drizzle-orm'
 import { PublicLayout } from '@/components/layout/PublicLayout'
 import { ArticleCard } from '@/components/news/ArticleCard'
 import { BreakingTicker } from '@/components/news/BreakingTicker'
+import { NewsletterSignup } from '@/components/news/NewsletterSignup'
 import styles from './(public)/page.module.scss'
 import type { ArticleWithRelations } from '@/types'
 
@@ -246,6 +247,10 @@ export default async function HomePage() {
               </div>
             )}
           </aside>
+        </div>
+
+        <div className={styles.newsletterWrap}>
+          <NewsletterSignup />
         </div>
 
         {sections.map(section => {

@@ -6,6 +6,10 @@
   @include max-sm { padding-bottom: $space-8; }
 }
 
+.newsletterWrap {
+  margin-top: $space-10;
+}
+
 // Screen-reader / crawler-only heading — the homepage has no visible H1
 .srOnly {
   position: absolute;
