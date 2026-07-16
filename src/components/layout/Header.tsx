@@ -59,7 +59,6 @@ export function Header({ categories = [] }: HeaderProps) {
         <div className={styles.topBarInner}>
           <span className={styles.date}>{today}</span>
           <nav className={styles.topLinks} aria-label="Secondary navigation">
-            <Link href="/search">Search</Link>
             {isAdmin && <Link href="/admin/dashboard">Admin</Link>}
           </nav>
         </div>
@@ -72,27 +71,10 @@ export function Header({ categories = [] }: HeaderProps) {
           <span className={styles.logoTagline}>Your trusted source</span>
         </Link>
 
-        {/* Desktop nav links (hidden on mobile) */}
+        {/* Desktop nav links — Home only here now; category links moved to
+            the category bar below to avoid duplicate anchor text/links. */}
         <div className={styles.navLinks}>
           <Link href="/">Home</Link>
-          {topLevel.slice(0, 6).map((cat) => {
-            const subs = subsByParent[cat.id] || []
-            return subs.length > 0 ? (
-              <div key={cat.slug} className={styles.navItem}>
-                <Link href={`/${cat.slug}`} className={styles.navLink}>
-                  {cat.name}
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m6 9 6 6 6-6"/></svg>
-                </Link>
-                <div className={styles.subMenu}>
-                  {subs.map((sub) => (
-                    <Link key={sub.slug} href={`/${sub.slug}`} className={styles.subLink}>{sub.name}</Link>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <Link key={cat.slug} href={`/${cat.slug}`}>{cat.name}</Link>
-            )
-          })}
         </div>
 
         {/* Actions */}
@@ -103,6 +85,7 @@ export function Header({ categories = [] }: HeaderProps) {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
               </svg>
+              <span className={styles.srOnly}>Search</span>
             </Link>
 
             <GoogleTranslateBtn />
@@ -162,14 +145,30 @@ export function Header({ categories = [] }: HeaderProps) {
         </div>
       </nav>
 
-      {/* Category bar */}
+      {/* Category bar — the single place top-level categories are linked
+          on desktop, with dropdown submenus for children */}
       {topLevel.length > 0 && (
         <div className={styles.categoryBar}>
           <div className={styles.categoryBarInner}>
             <Link href="/">All</Link>
-            {topLevel.map((cat) => (
-              <Link key={cat.slug} href={`/${cat.slug}`}>{cat.name}</Link>
-            ))}
+            {topLevel.map((cat) => {
+              const subs = subsByParent[cat.id] || []
+              return subs.length > 0 ? (
+                <div key={cat.slug} className={styles.navItem}>
+                  <Link href={`/${cat.slug}`} className={styles.navLink}>
+                    {cat.name}
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m6 9 6 6 6-6"/></svg>
+                  </Link>
+                  <div className={styles.subMenu}>
+                    {subs.map((sub) => (
+                      <Link key={sub.slug} href={`/${sub.slug}`} className={styles.subLink}>{sub.name}</Link>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <Link key={cat.slug} href={`/${cat.slug}`}>{cat.name}</Link>
+              )
+            })}
           </div>
         </div>
       )}
