@@ -172,7 +172,12 @@ async function getHomeData() {
 
   const sections = sectionDefs.map((sec, i) => ({ ...sec, articles: sectionArticles[i] }))
 
-  return { breaking, featured, latest, cats, sections }
+  // The hero/featured article shouldn't also repeat inside the "Latest News"
+  // grid below it — this was the remaining duplicate flagged by SEO audits.
+  const featuredId = featured[0]?.id
+  const filteredLatest = featuredId ? latest.filter(a => a.id !== featuredId) : latest
+
+  return { breaking, featured, latest: filteredLatest, cats, sections }
 }
 
 function mapArticle(row: Record<string, unknown>): ArticleWithRelations {
