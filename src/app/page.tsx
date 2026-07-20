@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { db } from '@/lib/db'
 import { articles, categories, users, homeSections } from '@/lib/db/schema'
-import { eq, desc, and, sql, asc } from 'drizzle-orm'
+import { eq, desc, and, sql, asc, notInArray } from 'drizzle-orm'
 import { PublicLayout } from '@/components/layout/PublicLayout'
 import { ArticleCard } from '@/components/news/ArticleCard'
 import { BreakingTicker } from '@/components/news/BreakingTicker'
@@ -143,21 +143,41 @@ async function getHomeData() {
       .orderBy(asc(homeSections.sortOrder)),
   ])
 
+  // Articles already shown in the hero (featured) or "Latest News" shouldn't
+  // repeat inside the category sections below — this was causing 11 duplicate
+  // headings/summaries flagged by SEO audits.
+  const excludeIds = [
+    ...(featured[0] ? [featured[0].id] : []),
+    ...latest.map(a => a.id),
+  ]
+
   const sectionArticles = await Promise.all(
-    sectionDefs.map(sec =>
-      db.select(ARTICLE_FIELDS)
+    sectionDefs.map(sec => {
+      const conditions = [
+        eq(articles.status, 'published'),
+        eq(articles.categoryId, sec.categoryId),
+      ]
+      if (excludeIds.length > 0) {
+        conditions.push(notInArray(articles.id, excludeIds))
+      }
+      return db.select(ARTICLE_FIELDS)
         .from(articles)
         .leftJoin(categories, eq(articles.categoryId, categories.id))
         .leftJoin(users, eq(articles.authorId, users.id))
-        .where(and(eq(articles.status, 'published'), eq(articles.categoryId, sec.categoryId)))
+        .where(and(...conditions))
         .orderBy(desc(articles.publishedAt))
         .limit(sec.articleCount)
-    )
+    })
   )
 
   const sections = sectionDefs.map((sec, i) => ({ ...sec, articles: sectionArticles[i] }))
 
-  return { breaking, featured, latest, cats, sections }
+  // The hero/featured article shouldn't also repeat inside the "Latest News"
+  // grid below it — this was the remaining duplicate flagged by SEO audits.
+  const featuredId = featured[0]?.id
+  const filteredLatest = featuredId ? latest.filter(a => a.id !== featuredId) : latest
+
+  return { breaking, featured, latest: filteredLatest, cats, sections }
 }
 
 function mapArticle(row: Record<string, unknown>): ArticleWithRelations {
@@ -266,7 +286,9 @@ export default async function HomePage() {
               <div className={styles.sectionHeader}>
                 <h2 className={styles.sectionTitle}>{section.title}</h2>
                 {section.categorySlug && (
-                  <Link href={`/${section.categorySlug}`} className={styles.sectionLink}>View All</Link>
+                  <Link href={`/${section.categorySlug}`} className={styles.sectionLink}>
+                    View All {section.title}
+                  </Link>
                 )}
               </div>
               <div className={styles.grid}>
