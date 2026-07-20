@@ -2,9 +2,17 @@ import 'server-only'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin } from 'better-auth/plugins'
+import { adminAc, defaultAc, userAc } from 'better-auth/plugins/admin/access'
 import { db } from '@/lib/db'
 import * as schema from '@/lib/db/schema'
 import { sendVerificationEmail, sendPasswordResetEmail } from '@/lib/email'
+
+// Owner outranks admin, so it gets the full statement list — including
+// `impersonate-admins`, which the built-in admin role deliberately lacks.
+const ownerAc = defaultAc.newRole({
+  user: ['create', 'list', 'set-role', 'ban', 'impersonate', 'impersonate-admins', 'delete', 'set-password', 'get', 'update'],
+  session: ['list', 'revoke', 'delete'],
+})
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -45,6 +53,10 @@ export const auth = betterAuth({
     admin({
       adminRole: ['admin', 'owner'],
       defaultRole: 'user',
+      // adminRole only decides who passes the admin gate; per-permission checks
+      // look the role up here. Without an `owner` entry it resolves to no
+      // permissions and every admin endpoint 403s for owners.
+      roles: { owner: ownerAc, admin: adminAc, user: userAc },
     }),
   ],
 

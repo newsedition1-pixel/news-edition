@@ -152,3 +152,117 @@
   color: #16a34a;
   &:hover:not(:disabled) { background: rgba(22,163,74,0.08); }
 }
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+}
+
+.passwordBtn {
+  padding: $space-1 $space-3;
+  border-radius: $radius-full;
+  font-size: $text-xs;
+  font-weight: $font-semibold;
+  cursor: pointer;
+  border: 1.5px solid var(--border);
+  color: var(--text-secondary);
+  background: transparent;
+  transition: all $transition-fast;
+  &:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $space-4;
+  z-index: 100;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: $radius-2xl;
+  padding: $space-5;
+  white-space: normal;
+}
+
+.dialogTitle {
+  font-size: $text-lg;
+  font-weight: $font-bold;
+  color: var(--text-primary);
+  margin-bottom: $space-2;
+}
+
+.dialogNote {
+  font-size: $text-sm;
+  color: var(--text-secondary);
+  margin-bottom: $space-4;
+}
+
+.label {
+  display: block;
+  font-size: $text-xs;
+  font-weight: $font-semibold;
+  color: var(--text-secondary);
+  margin-bottom: $space-1;
+}
+
+.input {
+  width: 100%;
+  padding: $space-2 $space-3;
+  margin-bottom: $space-3;
+  border: 1.5px solid var(--border);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: $text-sm;
+  outline: none;
+  transition: border-color $transition-fast;
+  &:focus { border-color: var(--color-primary); }
+  &:disabled { opacity: 0.5; }
+}
+
+.error {
+  font-size: $text-xs;
+  color: #dc2626;
+  margin-bottom: $space-3;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $space-2;
+  margin-top: $space-4;
+}
+
+.cancelBtn {
+  padding: $space-2 $space-4;
+  border-radius: $radius-full;
+  font-size: $text-sm;
+  font-weight: $font-semibold;
+  cursor: pointer;
+  border: 1.5px solid var(--border);
+  color: var(--text-secondary);
+  background: transparent;
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.submitBtn {
+  padding: $space-2 $space-4;
+  border-radius: $radius-full;
+  font-size: $text-sm;
+  font-weight: $font-semibold;
+  cursor: pointer;
+  border: none;
+  color: #fff;
+  background: var(--color-primary);
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
