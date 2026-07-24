@@ -18,7 +18,6 @@ export function ArticleCard({ article, variant = 'default', priority = false }: 
     <Link
       href={`/article/${slug}`}
       className={cn(styles.card, variant === 'hero' && styles.hero, variant === 'compact' && styles.compact)}
-      aria-label={title}
     >
       <div className={styles.imageWrapper}>
         {coverImage ? (
@@ -57,10 +56,18 @@ export function ArticleCard({ article, variant = 'default', priority = false }: 
         <div className={styles.meta}>
           {category && <span>{category.name}</span>}
           {category && publishedAt && <span className={styles.dot}>·</span>}
-          {publishedAt && <time dateTime={new Date(publishedAt).toISOString()}>{formatRelativeTime(publishedAt)}</time>}
+          {publishedAt && (
+            <time dateTime={new Date(publishedAt).toISOString()}>
+              {formatRelativeTime(publishedAt)}
+            </time>
+          )}
         </div>
 
-        <h2 className={styles.title}>{title}</h2>
+        {/* FIX: h2 → h3 to prevent 36-H2 flood on homepage.
+            The homepage section titles (Latest News, Politics, etc.) are the
+            real H2s; individual article cards sit inside those sections and
+            should be one level lower. */}
+        <h3 className={styles.title}>{title}</h3>
 
         {variant !== 'compact' && excerpt && (
           <p className={styles.excerpt}>{excerpt}</p>
@@ -72,7 +79,9 @@ export function ArticleCard({ article, variant = 'default', priority = false }: 
               <div className={styles.avatar}>
                 {author.image ? (
                   <Image src={author.image} alt={author.name} width={24} height={24} />
-                ) : author.name.charAt(0)}
+                ) : (
+                  author.name.charAt(0)
+                )}
               </div>
               <span>{author.name}</span>
             </div>
