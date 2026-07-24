@@ -11,7 +11,14 @@ import styles from './(public)/page.module.scss'
 import type { ArticleWithRelations } from '@/types'
 
 export const metadata: Metadata = {
-  title: { absolute: 'NewsEdition — Breaking News, Latest Updates' },
+  // FIX: Title updated to match page content words.
+  // Old: 'NewsEdition — Breaking News, Latest Updates'
+  // "Breaking" and "Updates" rarely appear in article text — caused
+  // Seobility "page title does not match content" warning.
+  // New title uses words (India, News, Politics, Business, World) that
+  // appear naturally in every article card on the homepage.
+  // OG/Twitter titles are set separately in layout.tsx and are unchanged.
+  title: { absolute: 'NewsEdition — India News, Politics, Business & World' },
   description: 'Your trusted source for breaking news, in-depth analysis, and comprehensive coverage.',
   alternates: { canonical: '/' },
 }
@@ -213,22 +220,9 @@ export default async function HomePage() {
       {breaking.length > 0 && <BreakingTicker articles={breaking} />}
 
       <div className={styles.page}>
-        {/*
-          FIX: H1 text changed from "NewsEdition — Breaking News, Latest Updates"
-          to "India News, Politics, Business and World — NewsEdition".
-
-          Root cause: Seobility flagged "Words from the H1 heading are not used
-          in the page content." The old H1 had "Breaking", "News", "Latest",
-          "Updates" — but article card titles on the page contain words like
-          "India", "Politics", "Business", "World" far more frequently. The new
-          H1 uses words that naturally appear across every article on the page,
-          so the H1↔content match score improves without changing the visual
-          design (this element is sr-only / visually hidden).
-
-          The <title> tag and OG/Twitter titles are NOT changed — they stay as
-          "NewsEdition — Breaking News, Latest Updates" which is correct for
-          search snippets and social shares.
-        */}
+        {/* FIX: H1 uses content-matching words (India, Politics, Business, World)
+            instead of "Breaking News, Latest Updates" which rarely appear in
+            article text. sr-only so visually unchanged. */}
         <h1 className={styles.srOnly}>
           India News, Politics, Business and World — NewsEdition
         </h1>
