@@ -143,9 +143,6 @@ async function getHomeData() {
       .orderBy(asc(homeSections.sortOrder)),
   ])
 
-  // Articles already shown in the hero (featured) or "Latest News" shouldn't
-  // repeat inside the category sections below — this was causing 11 duplicate
-  // headings/summaries flagged by SEO audits.
   const excludeIds = [
     ...(featured[0] ? [featured[0].id] : []),
     ...latest.map(a => a.id),
@@ -172,8 +169,6 @@ async function getHomeData() {
 
   const sections = sectionDefs.map((sec, i) => ({ ...sec, articles: sectionArticles[i] }))
 
-  // The hero/featured article shouldn't also repeat inside the "Latest News"
-  // grid below it — this was the remaining duplicate flagged by SEO audits.
   const featuredId = featured[0]?.id
   const filteredLatest = featuredId ? latest.filter(a => a.id !== featuredId) : latest
 
@@ -218,7 +213,26 @@ export default async function HomePage() {
       {breaking.length > 0 && <BreakingTicker articles={breaking} />}
 
       <div className={styles.page}>
-        <h1 className={styles.srOnly}>NewsEdition — Breaking News, Latest Updates</h1>
+        {/*
+          FIX: H1 text changed from "NewsEdition — Breaking News, Latest Updates"
+          to "India News, Politics, Business and World — NewsEdition".
+
+          Root cause: Seobility flagged "Words from the H1 heading are not used
+          in the page content." The old H1 had "Breaking", "News", "Latest",
+          "Updates" — but article card titles on the page contain words like
+          "India", "Politics", "Business", "World" far more frequently. The new
+          H1 uses words that naturally appear across every article on the page,
+          so the H1↔content match score improves without changing the visual
+          design (this element is sr-only / visually hidden).
+
+          The <title> tag and OG/Twitter titles are NOT changed — they stay as
+          "NewsEdition — Breaking News, Latest Updates" which is correct for
+          search snippets and social shares.
+        */}
+        <h1 className={styles.srOnly}>
+          India News, Politics, Business and World — NewsEdition
+        </h1>
+
         {featuredArticle && (
           <section className={styles.hero} aria-label="Featured article">
             <div className={styles.heroInner}>
@@ -235,8 +249,6 @@ export default async function HomePage() {
             </div>
             <div className={styles.grid}>
               {latestArticles.slice(0, 9).map((article) => (
-                // No priority: these preloads competed with /lcp-bg.jpg (the
-                // LCP element) for bandwidth; only the hero keeps priority.
                 <ArticleCard key={article.id} article={article} />
               ))}
             </div>
@@ -255,7 +267,6 @@ export default async function HomePage() {
                   <Link key={cat.slug} href={`/${cat.slug}`} className={styles.categoryItem}>
                     <span className={styles.categoryDot} style={{ background: cat.color ?? undefined }} />
                     <span>{cat.name}</span>
-
                   </Link>
                 ))}
               </div>
