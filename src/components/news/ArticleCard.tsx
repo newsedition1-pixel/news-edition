@@ -15,6 +15,20 @@ export function ArticleCard({ article, variant = 'default', priority = false }: 
   const { title, slug, excerpt, coverImage, coverImageAlt, category, author, publishedAt, viewCount, isBreaking } = article
 
   return (
+    /*
+      FIX 1: aria-label removed — it was making anchor text = full title
+      string which Seobility flagged as "anchor text too long".
+      The link's visible text content (the <p> title below) serves as
+      the accessible name automatically.
+
+      FIX 2: <h3> → <p> for article card titles.
+      Homepage had 35 headings for ~1037 words — Seobility warns this
+      ratio is too high. Article titles in cards are NOT document-outline
+      headings; they are list items inside labelled sections (Latest News,
+      Politics, etc.). Using <p> removes ~25 heading tags, bringing the
+      total down to ~10 which is proportionate to the text volume.
+      Visual appearance is unchanged — same CSS class applied.
+    */
     <Link
       href={`/article/${slug}`}
       className={cn(styles.card, variant === 'hero' && styles.hero, variant === 'compact' && styles.compact)}
@@ -63,11 +77,8 @@ export function ArticleCard({ article, variant = 'default', priority = false }: 
           )}
         </div>
 
-        {/* FIX: h2 → h3 to prevent 36-H2 flood on homepage.
-            The homepage section titles (Latest News, Politics, etc.) are the
-            real H2s; individual article cards sit inside those sections and
-            should be one level lower. */}
-        <h3 className={styles.title}>{title}</h3>
+        {/* FIX: h3 → p. Card titles are not document-structure headings. */}
+        <p className={styles.title}>{title}</p>
 
         {variant !== 'compact' && excerpt && (
           <p className={styles.excerpt}>{excerpt}</p>
