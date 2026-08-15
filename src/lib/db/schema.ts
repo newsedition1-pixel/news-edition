@@ -98,10 +98,17 @@ export const articles = pgTable('articles', {
   seoTitle: varchar('seoTitle', { length: 200 }),
   seoDescription: text('seoDescription'),
   viewCount: integer('viewCount').notNull().default(0),
+  // Automation: origin URL of the source news item, used to avoid re-publishing
+  // duplicates. Null for manually-authored articles. Postgres allows many nulls
+  // under a unique index, so manual articles are unaffected.
+  sourceUrl: text('sourceUrl'),
+  isAiGenerated: boolean('isAiGenerated').notNull().default(false),
   publishedAt: timestamp('publishedAt'),
   createdAt: timestamp('createdAt').defaultNow().notNull(),
   updatedAt: timestamp('updatedAt').defaultNow().notNull(),
-})
+}, (t) => [
+  uniqueIndex('articles_sourceUrl_unq').on(t.sourceUrl),
+])
 
 // ─── Comments ─────────────────────────────────────────────────────────────────
 export const comments = pgTable('comments', {
