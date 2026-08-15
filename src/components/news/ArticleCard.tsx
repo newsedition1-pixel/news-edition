@@ -15,10 +15,16 @@ export function ArticleCard({ article, variant = 'default', priority = false }: 
   const { title, slug, excerpt, coverImage, coverImageAlt, category, author, publishedAt, viewCount, isBreaking } = article
 
   return (
+    /*
+      Card stays as a single <Link> so all existing SCSS still works:
+      - .card:hover .imageWrapper img { transform: scale(1.05) }
+      - .card:hover .title { color: var(--color-primary) }
+      - hero/compact flex variants unchanged
+      No SCSS changes needed.
+    */
     <Link
       href={`/article/${slug}`}
       className={cn(styles.card, variant === 'hero' && styles.hero, variant === 'compact' && styles.compact)}
-      aria-label={title}
     >
       <div className={styles.imageWrapper}>
         {coverImage ? (
@@ -57,36 +63,56 @@ export function ArticleCard({ article, variant = 'default', priority = false }: 
         <div className={styles.meta}>
           {category && <span>{category.name}</span>}
           {category && publishedAt && <span className={styles.dot}>·</span>}
-          {publishedAt && <time dateTime={new Date(publishedAt).toISOString()}>{formatRelativeTime(publishedAt)}</time>}
+          {publishedAt && (
+            <time dateTime={new Date(publishedAt).toISOString()}>
+              {formatRelativeTime(publishedAt)}
+            </time>
+          )}
         </div>
 
-        <h2 className={styles.title}>{title}</h2>
+        {/* Article title — p instead of h3, same styles.title class */}
+        <p className={styles.title}>{title}</p>
 
+        {/*
+          FIX: excerpt + footer wrapped in aria-hidden="true" span.
+          Seobility and screen readers compute anchor text from
+          accessible text only. aria-hidden removes excerpt + meta
+          from the link's accessible name, so anchor text = title only.
+          Visually nothing changes — content still renders normally.
+          Screen reader users get the title as the link label, which
+          is the correct and most useful description of the destination.
+        */}
         {variant !== 'compact' && excerpt && (
-          <p className={styles.excerpt}>{excerpt}</p>
+          <span aria-hidden="true">
+            <p className={styles.excerpt}>{excerpt}</p>
+          </span>
         )}
 
-        <div className={styles.footer}>
-          {author && (
-            <div className={styles.author}>
-              <div className={styles.avatar}>
-                {author.image ? (
-                  <Image src={author.image} alt={author.name} width={24} height={24} />
-                ) : author.name.charAt(0)}
+        <span aria-hidden="true">
+          <div className={styles.footer}>
+            {author && (
+              <div className={styles.author}>
+                <div className={styles.avatar}>
+                  {author.image ? (
+                    <Image src={author.image} alt={author.name} width={24} height={24} />
+                  ) : (
+                    author.name.charAt(0)
+                  )}
+                </div>
+                <span>{author.name}</span>
               </div>
-              <span>{author.name}</span>
-            </div>
-          )}
-          {viewCount > 0 && (
-            <div className={styles.views}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              <span>{viewCount.toLocaleString('en-IN')}</span>
-            </div>
-          )}
-        </div>
+            )}
+            {viewCount > 0 && (
+              <div className={styles.views}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <span>{viewCount.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+          </div>
+        </span>
       </div>
     </Link>
   )

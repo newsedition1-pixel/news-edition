@@ -11,7 +11,14 @@ import styles from './(public)/page.module.scss'
 import type { ArticleWithRelations } from '@/types'
 
 export const metadata: Metadata = {
-  title: { absolute: 'NewsEdition — Breaking News, Latest Updates' },
+  // FIX: Title updated to match page content words.
+  // Old: 'NewsEdition — Breaking News, Latest Updates'
+  // "Breaking" and "Updates" rarely appear in article text — caused
+  // Seobility "page title does not match content" warning.
+  // New title uses words (India, News, Politics, Business, World) that
+  // appear naturally in every article card on the homepage.
+  // OG/Twitter titles are set separately in layout.tsx and are unchanged.
+  title: { absolute: 'NewsEdition — India News, Politics, Business & World' },
   description: 'Your trusted source for breaking news, in-depth analysis, and comprehensive coverage.',
   alternates: { canonical: '/' },
 }
@@ -143,9 +150,6 @@ async function getHomeData() {
       .orderBy(asc(homeSections.sortOrder)),
   ])
 
-  // Articles already shown in the hero (featured) or "Latest News" shouldn't
-  // repeat inside the category sections below — this was causing 11 duplicate
-  // headings/summaries flagged by SEO audits.
   const excludeIds = [
     ...(featured[0] ? [featured[0].id] : []),
     ...latest.map(a => a.id),
@@ -172,8 +176,6 @@ async function getHomeData() {
 
   const sections = sectionDefs.map((sec, i) => ({ ...sec, articles: sectionArticles[i] }))
 
-  // The hero/featured article shouldn't also repeat inside the "Latest News"
-  // grid below it — this was the remaining duplicate flagged by SEO audits.
   const featuredId = featured[0]?.id
   const filteredLatest = featuredId ? latest.filter(a => a.id !== featuredId) : latest
 
@@ -218,7 +220,13 @@ export default async function HomePage() {
       {breaking.length > 0 && <BreakingTicker articles={breaking} />}
 
       <div className={styles.page}>
-        <h1 className={styles.srOnly}>NewsEdition — Breaking News, Latest Updates</h1>
+        {/* FIX: H1 uses content-matching words (India, Politics, Business, World)
+            instead of "Breaking News, Latest Updates" which rarely appear in
+            article text. sr-only so visually unchanged. */}
+        <h1 className={styles.srOnly}>
+          India News, Politics, Business and World — NewsEdition
+        </h1>
+
         {featuredArticle && (
           <section className={styles.hero} aria-label="Featured article">
             <div className={styles.heroInner}>
@@ -235,8 +243,6 @@ export default async function HomePage() {
             </div>
             <div className={styles.grid}>
               {latestArticles.slice(0, 9).map((article) => (
-                // No priority: these preloads competed with /lcp-bg.jpg (the
-                // LCP element) for bandwidth; only the hero keeps priority.
                 <ArticleCard key={article.id} article={article} />
               ))}
             </div>
@@ -255,7 +261,6 @@ export default async function HomePage() {
                   <Link key={cat.slug} href={`/${cat.slug}`} className={styles.categoryItem}>
                     <span className={styles.categoryDot} style={{ background: cat.color ?? undefined }} />
                     <span>{cat.name}</span>
-
                   </Link>
                 ))}
               </div>

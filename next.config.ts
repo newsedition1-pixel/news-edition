@@ -7,9 +7,14 @@ const variables = fs.readFileSync(path.join(stylesDir, '_variables.scss'), 'utf8
 const mixins = fs.readFileSync(path.join(stylesDir, '_mixins.scss'), 'utf8')
 
 const nextConfig: NextConfig = {
+  // FIX: Hides "x-powered-by: Next.js" from response headers.
+  // Seobility flagged this as "unnecessary" info leakage (Server score issue).
+  poweredByHeader: false,
+
   sassOptions: {
     additionalData: `${variables}\n${mixins}\n`,
   },
+
   images: {
     // Bypass Vercel's image optimizer — Cloudinary handles optimization on its
     // own CDN (see src/lib/imageLoader.ts). This keeps Vercel's metered
@@ -22,6 +27,7 @@ const nextConfig: NextConfig = {
       { hostname: 'avatars.githubusercontent.com' },
     ],
   },
+
   async headers() {
     return [
       {
