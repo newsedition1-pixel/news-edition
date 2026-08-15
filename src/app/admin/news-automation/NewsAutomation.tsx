@@ -20,9 +20,12 @@ interface ItemResult {
 }
 
 const MAX_ITEMS = 10
+const MIN_WORDS = 100
+const MAX_WORDS = 4000
 
-export function NewsAutomation() {
+export function NewsAutomation({ defaultWordLength }: { defaultWordLength: number }) {
   const [query, setQuery] = useState('')
+  const [wordLength, setWordLength] = useState(defaultWordLength)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [randomize, setRandomize] = useState(false)
@@ -87,7 +90,7 @@ export function NewsAutomation() {
       const res = await fetch('/api/admin/news-automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToProcess }),
+        body: JSON.stringify({ items: itemsToProcess, wordLength }),
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error || 'Failed to generate'); return }
@@ -121,6 +124,21 @@ export function NewsAutomation() {
           <button type="button" onClick={findNews} className={styles.findBtn} disabled={finding}>
             {finding ? 'Finding…' : 'Find news'}
           </button>
+        </div>
+        <div className={styles.lengthRow}>
+          <label htmlFor="wordLength" className={styles.lengthLabel}>Article length</label>
+          <input
+            id="wordLength"
+            type="number"
+            min={MIN_WORDS}
+            max={MAX_WORDS}
+            step={50}
+            value={wordLength}
+            onChange={(e) => setWordLength(Math.min(MAX_WORDS, Math.max(MIN_WORDS, Number(e.target.value) || MIN_WORDS)))}
+            className={styles.lengthInput}
+          />
+          <span className={styles.lengthUnit}>words</span>
+          {wordLength !== defaultWordLength && <span className={styles.lengthNote}>· becomes the new default on publish</span>}
         </div>
         <p className={styles.hintNote}>Source: Google News. Articles are AI-rewritten and published live. Duplicates are skipped automatically.</p>
       </div>

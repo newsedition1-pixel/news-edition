@@ -150,6 +150,15 @@ export const homeSections = pgTable('home_sections', {
   createdAt: timestamp('createdAt').defaultNow().notNull(),
 })
 
+// ─── Settings ─────────────────────────────────────────────────────────────────
+// Generic key/value store for admin-tunable defaults (e.g. news automation
+// word length). One row per key.
+export const settings = pgTable('settings', {
+  key: varchar('key', { length: 100 }).primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+})
+
 // ─── Type Exports ─────────────────────────────────────────────────────────────
 export type User = typeof users.$inferSelect
 export type Session = typeof sessions.$inferSelect
@@ -158,6 +167,7 @@ export type Article = typeof articles.$inferSelect
 export type Comment = typeof comments.$inferSelect
 export type Asset = typeof assets.$inferSelect
 export type HomeSection = typeof homeSections.$inferSelect
+export type Setting = typeof settings.$inferSelect
 
 export type NewCategory = typeof categories.$inferInsert
 export type NewArticle = typeof articles.$inferInsert

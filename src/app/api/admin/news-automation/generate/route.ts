@@ -9,6 +9,7 @@ import { notifyIndexing } from '@/lib/googleIndexing'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { fetchSourcePage } from '@/lib/news/sourcePage'
 import { rewriteArticle, generateCoverImage } from '@/lib/ai/openai'
+import { clampWordLength, getNewsWordLength, setSetting, NEWS_WORD_LENGTH_KEY } from '@/lib/settings'
 import type { NewsCandidate } from '@/lib/news/googleNews'
 
 export const runtime = 'nodejs'
@@ -50,6 +51,16 @@ export async function POST(request: NextRequest) {
     if (items.length === 0) return NextResponse.json({ error: 'No items to process' }, { status: 400 })
     if (items.length > MAX_ITEMS) return NextResponse.json({ error: `Too many items (max ${MAX_ITEMS} per run)` }, { status: 400 })
 
+    // Word length: use the admin's value if supplied and persist it as the new
+    // default; otherwise fall back to the stored default.
+    let wordLength: number
+    if (body?.wordLength !== undefined && body?.wordLength !== null && body?.wordLength !== '') {
+      wordLength = clampWordLength(body.wordLength)
+      await setSetting(NEWS_WORD_LENGTH_KEY, String(wordLength))
+    } else {
+      wordLength = await getNewsWordLength()
+    }
+
     const cats = await db.select({ id: categories.id, slug: categories.slug, name: categories.name }).from(categories).where(eq(categories.isActive, true))
     const catBySlug = new Map(cats.map((c) => [c.slug, c.id]))
     const categoryChoices = cats.map((c) => ({ slug: c.slug, name: c.name }))
@@ -78,6 +89,7 @@ export async function POST(request: NextRequest) {
           snippet: item.snippet || '',
           sourceDescription: page.description,
           categories: categoryChoices,
+          wordLength,
         })
 
         // Image: prefer the source's og:image, fall back to AI generation.
