@@ -16,6 +16,8 @@ export interface RewriteInput {
   categories: { slug: string; name: string }[]
   /** Target article body length in words. */
   wordLength: number
+  /** Number of FAQs to generate; 0 means none. */
+  faqCount: number
 }
 
 export interface RewrittenArticle {
@@ -28,9 +30,14 @@ export interface RewrittenArticle {
   categorySlug: string | null
   imageAlt: string
   imagePrompt: string
+  faqs: { question: string; answer: string }[]
 }
 
-function buildSystemPrompt(wordLength: number): string {
+function buildSystemPrompt(wordLength: number, faqCount: number): string {
+  const faqLine = faqCount > 0
+    ? `- "faqs": array of exactly ${faqCount} reader FAQs relevant to the story, each an object {"question": string, "answer": string}. Questions must be natural and specific; answers 1-3 sentences, factual, no fabricated data.`
+    : `- "faqs": an empty array [].`
+
   return `You are a professional news editor for an Indian English-language news website.
 You are given a headline and a short snippet from a source. Write an ORIGINAL news article in your own words — never copy the source phrasing. Be factual and neutral; do not invent specific quotes, statistics, or named sources that are not implied by the input. You may expand with relevant background, context, and neutral analysis to reach the target length, but never fabricate concrete facts.
 
@@ -43,7 +50,8 @@ Return ONLY a JSON object with these exact keys:
 - "seoDescription": SEO meta description (max 155 chars)
 - "categorySlug": the slug of the single best-matching category from the provided list, or null if none fit
 - "imageAlt": concise alt text describing a fitting cover image (max 120 chars)
-- "imagePrompt": a vivid, safe, photorealistic image generation prompt for a news cover image relevant to the story. No text/watermarks/logos, no real identifiable public figures.`
+- "imagePrompt": a vivid, safe, photorealistic image generation prompt for a news cover image relevant to the story. No text/watermarks/logos, no real identifiable public figures.
+${faqLine}`
 }
 
 async function chatJson(input: RewriteInput): Promise<RewrittenArticle> {
@@ -55,6 +63,7 @@ async function chatJson(input: RewriteInput): Promise<RewrittenArticle> {
 Source snippet: ${input.snippet || '(none)'}
 Additional context: ${input.sourceDescription || '(none)'}
 Target article length: approximately ${input.wordLength} words.
+FAQs to generate: ${input.faqCount > 0 ? input.faqCount : 'none (empty array)'}.
 
 Available categories:
 ${categoryList}`
@@ -65,13 +74,13 @@ ${categoryList}`
     body: JSON.stringify({
       model: TEXT_MODEL,
       messages: [
-        { role: 'system', content: buildSystemPrompt(input.wordLength) },
+        { role: 'system', content: buildSystemPrompt(input.wordLength, input.faqCount) },
         { role: 'user', content: userPrompt },
       ],
       response_format: { type: 'json_object' },
       temperature: 0.7,
-      // Headroom so long articles + the other JSON fields don't get truncated.
-      max_tokens: Math.min(8000, Math.round(input.wordLength * 2) + 800),
+      // Headroom so long articles + FAQs + the other JSON fields don't get truncated.
+      max_tokens: Math.min(12000, Math.round(input.wordLength * 2) + input.faqCount * 120 + 800),
     }),
   })
 
@@ -98,6 +107,12 @@ ${categoryList}`
     categorySlug: validSlug ? parsed.categorySlug! : null,
     imageAlt: String(parsed.imageAlt || parsed.title).slice(0, 190),
     imagePrompt: String(parsed.imagePrompt || parsed.title).slice(0, 900),
+    faqs: Array.isArray(parsed.faqs)
+      ? parsed.faqs
+          .filter((f): f is { question: string; answer: string } =>
+            !!f && typeof f === 'object' && typeof (f as { question?: unknown }).question === 'string' && typeof (f as { answer?: unknown }).answer === 'string')
+          .map((f) => ({ question: String(f.question), answer: String(f.answer) }))
+      : [],
   }
 }
 

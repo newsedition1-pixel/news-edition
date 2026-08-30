@@ -13,19 +13,25 @@ interface Candidate {
 interface ItemResult {
   title: string
   sourceUrl: string
-  status: 'published' | 'skipped' | 'failed'
+  status: 'published' | 'draft' | 'skipped' | 'failed'
+  id?: number
   slug?: string
   imageSource?: 'source' | 'generated' | 'none'
+  faqCount?: number
   reason?: string
 }
 
 const MAX_ITEMS = 10
 const MIN_WORDS = 100
 const MAX_WORDS = 4000
+const MAX_FAQS = 20
 
 export function NewsAutomation({ defaultWordLength }: { defaultWordLength: number }) {
   const [query, setQuery] = useState('')
   const [wordLength, setWordLength] = useState(defaultWordLength)
+  const [generateImage, setGenerateImage] = useState(false)
+  const [publishNow, setPublishNow] = useState(false)
+  const [faqCount, setFaqCount] = useState(10)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [randomize, setRandomize] = useState(false)
@@ -90,7 +96,7 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
       const res = await fetch('/api/admin/news-automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToProcess, wordLength }),
+        body: JSON.stringify({ items: itemsToProcess, wordLength, generateImage, publishNow, faqCount }),
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error || 'Failed to generate'); return }
@@ -140,7 +146,49 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
           <span className={styles.lengthUnit}>words</span>
           {wordLength !== defaultWordLength && <span className={styles.lengthNote}>· becomes the new default on publish</span>}
         </div>
-        <p className={styles.hintNote}>Source: Google News. Articles are AI-rewritten and published live. Duplicates are skipped automatically.</p>
+
+        <div className={styles.optionGrid}>
+          <fieldset className={styles.option}>
+            <legend className={styles.optionLegend}>Cover image</legend>
+            <label className={styles.radio}>
+              <input type="radio" name="imageMode" checked={!generateImage} onChange={() => setGenerateImage(false)} />
+              Don&apos;t generate (use source image if any)
+            </label>
+            <label className={styles.radio}>
+              <input type="radio" name="imageMode" checked={generateImage} onChange={() => setGenerateImage(true)} />
+              Generate with AI when source has none
+            </label>
+          </fieldset>
+
+          <fieldset className={styles.option}>
+            <legend className={styles.optionLegend}>Publishing</legend>
+            <label className={styles.radio}>
+              <input type="radio" name="pubMode" checked={!publishNow} onChange={() => setPublishNow(false)} />
+              Save as draft
+            </label>
+            <label className={styles.radio}>
+              <input type="radio" name="pubMode" checked={publishNow} onChange={() => setPublishNow(true)} />
+              Publish immediately
+            </label>
+          </fieldset>
+
+          <fieldset className={styles.option}>
+            <legend className={styles.optionLegend}>FAQs per article</legend>
+            <div className={styles.faqRow}>
+              <input
+                type="number"
+                min={0}
+                max={MAX_FAQS}
+                value={faqCount}
+                onChange={(e) => setFaqCount(Math.min(MAX_FAQS, Math.max(0, Math.round(Number(e.target.value)) || 0)))}
+                className={styles.lengthInput}
+              />
+              <span className={styles.lengthUnit}>{faqCount === 0 ? 'no FAQs' : 'FAQs'}</span>
+            </div>
+          </fieldset>
+        </div>
+
+        <p className={styles.hintNote}>Source: Google News. Articles are AI-rewritten. Duplicates are skipped automatically. AI image generation costs money per image.</p>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
@@ -164,7 +212,7 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
               of {candidates.length}
             </label>
             <span className={styles.selCount}>
-              {randomize ? `${Math.min(randomCount, candidates.length)} will be published` : `${selected.size} selected`}
+              {randomize ? `${Math.min(randomCount, candidates.length)} will be processed` : `${selected.size} selected`}
             </span>
           </div>
 
@@ -198,9 +246,11 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
               className={styles.generateBtn}
               disabled={generating || itemsToProcess.length === 0}
             >
-              {generating ? 'Generating & publishing…' : `Generate & publish (${itemsToProcess.length})`}
+              {generating
+                ? (publishNow ? 'Generating & publishing…' : 'Generating drafts…')
+                : `${publishNow ? 'Generate & publish' : 'Generate drafts'} (${itemsToProcess.length})`}
             </button>
-            {generating && <span className={styles.working}>This can take a while — AI rewrite + image per article.</span>}
+            {generating && <span className={styles.working}>This can take a while — AI rewrite{generateImage ? ' + image' : ''} per article.</span>}
           </div>
         </div>
       )}
@@ -215,10 +265,14 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
                 <span className={styles.resTitle}>
                   {r.status === 'published' && r.slug
                     ? <a href={`/article/${r.slug}`} target="_blank" rel="noopener noreferrer">{r.title}</a>
+                    : r.status === 'draft' && r.id
+                    ? <a href={`/admin/articles/${r.id}/edit`} target="_blank" rel="noopener noreferrer">{r.title}</a>
                     : r.title}
                 </span>
-                {r.imageSource && r.status === 'published' && (
-                  <span className={styles.resImg}>image: {r.imageSource}</span>
+                {(r.status === 'published' || r.status === 'draft') && (
+                  <span className={styles.resImg}>
+                    image: {r.imageSource}{typeof r.faqCount === 'number' ? ` · ${r.faqCount} FAQs` : ''}
+                  </span>
                 )}
                 {r.reason && <span className={styles.resReason}>{r.reason}</span>}
               </li>

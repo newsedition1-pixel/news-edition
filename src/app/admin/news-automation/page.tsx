@@ -14,7 +14,7 @@ export default async function NewsAutomationPage() {
       <div className={styles.header}>
         <h1 className={styles.title}>News Automation</h1>
         <p className={styles.subtitle}>
-          Pull headlines from Google News, rewrite them with AI, attach an image, and publish.
+          Pull headlines from Google News, rewrite them with AI and generate FAQs, then save as drafts or publish.
         </p>
       </div>
       <NewsAutomation defaultWordLength={defaultWordLength} />

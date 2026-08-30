@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { articles, assets, categories } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { slugify } from '@/lib/utils'
+import { slugify, sanitizeFaqs } from '@/lib/utils'
 import { notifyIndexing } from '@/lib/googleIndexing'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { fetchSourcePage } from '@/lib/news/sourcePage'
@@ -17,12 +17,17 @@ export const maxDuration = 300 // seconds; Vercel caps this by plan — keep bat
 
 const MAX_ITEMS = 10
 
+const MAX_FAQS = 20
+const DEFAULT_FAQS = 10
+
 interface ItemResult {
   title: string
   sourceUrl: string
-  status: 'published' | 'skipped' | 'failed'
+  status: 'published' | 'draft' | 'skipped' | 'failed'
+  id?: number
   slug?: string
   imageSource?: 'source' | 'generated' | 'none'
+  faqCount?: number
   reason?: string
 }
 
@@ -61,12 +66,22 @@ export async function POST(request: NextRequest) {
       wordLength = await getNewsWordLength()
     }
 
+    // Per-run options (not persisted). Defaults chosen so a bare request is safe:
+    // no paid AI image, draft (not live), 10 FAQs.
+    const allowImageGen = body?.generateImage === true
+    const publishNow = body?.publishNow === true
+    const rawFaq = body?.faqCount
+    const faqCount = rawFaq === undefined || rawFaq === null || rawFaq === ''
+      ? DEFAULT_FAQS
+      : Math.min(MAX_FAQS, Math.max(0, Math.round(Number(rawFaq)) || 0))
+    const targetStatus: 'published' | 'draft' = publishNow ? 'published' : 'draft'
+
     const cats = await db.select({ id: categories.id, slug: categories.slug, name: categories.name }).from(categories).where(eq(categories.isActive, true))
     const catBySlug = new Map(cats.map((c) => [c.slug, c.id]))
     const categoryChoices = cats.map((c) => ({ slug: c.slug, name: c.name }))
 
     const results: ItemResult[] = []
-    let published = 0
+    let created = 0
 
     for (const item of items) {
       if (!item?.sourceUrl || !item?.title) {
@@ -90,9 +105,11 @@ export async function POST(request: NextRequest) {
           sourceDescription: page.description,
           categories: categoryChoices,
           wordLength,
+          faqCount,
         })
 
-        // Image: prefer the source's og:image, fall back to AI generation.
+        // Image: always use a free source og:image when present. AI generation
+        // is opt-in (costs money), so only fall back to it when enabled.
         let cover: { url: string; publicId: string } | null = null
         let imageSource: ItemResult['imageSource'] = 'none'
         if (page.imageUrl) {
@@ -103,7 +120,7 @@ export async function POST(request: NextRequest) {
             cover = null
           }
         }
-        if (!cover) {
+        if (!cover && allowImageGen) {
           try {
             const dataUri = await generateCoverImage(rewritten.imagePrompt)
             cover = await storeImage(dataUri, session.user.id)
@@ -113,6 +130,8 @@ export async function POST(request: NextRequest) {
             imageSource = 'none'
           }
         }
+
+        const faqs = sanitizeFaqs(rewritten.faqs)
 
         // Unique slug (same approach as the manual create route).
         let slug = slugify(rewritten.title)
@@ -130,21 +149,33 @@ export async function POST(request: NextRequest) {
           coverImagePublicId: cover?.publicId || null,
           categoryId: rewritten.categorySlug ? catBySlug.get(rewritten.categorySlug) ?? null : null,
           authorId: session.user.id,
-          status: 'published',
+          status: targetStatus,
           tags: rewritten.tags.length ? rewritten.tags : null,
+          faqs,
           seoTitle: rewritten.seoTitle || null,
           seoDescription: rewritten.seoDescription || null,
           sourceUrl: item.sourceUrl,
           isAiGenerated: true,
-          publishedAt: now,
+          publishedAt: targetStatus === 'published' ? now : null,
           createdAt: now,
           updatedAt: now,
         }).returning()
 
-        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
-        notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
-        published++
-        results.push({ title: article.title, sourceUrl: item.sourceUrl, status: 'published', slug: article.slug, imageSource })
+        if (targetStatus === 'published') {
+          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
+          notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
+          revalidatePath(`/article/${article.slug}`)
+        }
+        created++
+        results.push({
+          title: article.title,
+          sourceUrl: item.sourceUrl,
+          status: targetStatus,
+          id: article.id,
+          slug: article.slug,
+          imageSource,
+          faqCount: faqs?.length ?? 0,
+        })
       } catch (err) {
         console.error('Generate item error:', item.sourceUrl, err)
         results.push({
@@ -156,12 +187,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (published > 0) {
-      revalidatePath('/')
+    if (created > 0) {
+      if (publishNow) revalidatePath('/')
       revalidatePath('/admin/articles')
     }
 
-    return NextResponse.json({ published, total: items.length, results })
+    return NextResponse.json({ created, total: items.length, results })
   } catch (error) {
     if (error && typeof error === 'object' && 'digest' in error && typeof error.digest === 'string' && error.digest.startsWith('NEXT_REDIRECT')) throw error
     console.error('News generate error:', error)
