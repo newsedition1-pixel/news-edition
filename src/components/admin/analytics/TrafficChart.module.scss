@@ -1,0 +1,153 @@
+.wrap {
+  // Validated data-viz slots (see references/palette.md): blue + orange,
+  // stepped separately for each surface. Do not swap for brand red — red
+  // reads as "critical" on a chart.
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --viz-grid: #{$border-light};
+  --viz-axis: #{$text-muted-light};
+
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+}
+
+:global([data-theme='dark']) .wrap {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --viz-grid: #{$border-dark};
+  --viz-axis: #{$text-muted-dark};
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: $space-5;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-2;
+  font-size: $text-xs;
+  font-weight: $font-medium;
+  color: var(--text-secondary);
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+
+  &.s1 { background: var(--series-1); }
+  &.s2 { background: var(--series-2); }
+}
+
+.plot {
+  position: relative;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  border-radius: $radius-lg;
+
+  &:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+}
+
+.grid {
+  stroke: var(--viz-grid);
+  stroke-width: 1;
+}
+
+.axisText {
+  fill: var(--viz-axis);
+  font-size: 11px;
+  font-family: $font-sans;
+  font-variant-numeric: tabular-nums;
+}
+
+.line1 {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.line2 {
+  fill: none;
+  stroke: var(--series-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fillTop { stop-color: var(--series-1); stop-opacity: 0.2; }
+.fillBottom { stop-color: var(--series-1); stop-opacity: 0; }
+
+.crosshair {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+// 2px surface ring so the markers stay legible where the two lines cross.
+.dot1 {
+  fill: var(--series-1);
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+
+.dot2 {
+  fill: var(--series-2);
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+
+.tooltip {
+  position: absolute;
+  top: $space-2;
+  transform: translateX(-50%);
+  min-width: 168px;
+  padding: $space-3;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: $radius-lg;
+  box-shadow: $shadow-lg;
+  pointer-events: none;
+  z-index: $z-raised;
+
+  &.flip { transform: translateX(-100%); }
+}
+
+.tipDate {
+  font-size: $text-xs;
+  font-weight: $font-bold;
+  color: var(--text-primary);
+  margin-bottom: $space-2;
+}
+
+.tipRow {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  font-size: $text-xs;
+
+  & + & { margin-top: $space-1; }
+}
+
+.tipLabel {
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.tipValue {
+  color: var(--text-primary);
+  font-weight: $font-semibold;
+  font-variant-numeric: tabular-nums;
+}

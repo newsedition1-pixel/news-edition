@@ -1,0 +1,365 @@
+.page {
+  // Validated data-viz slots — see the dataviz reference palette.
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --delta-up: #006300;
+  --delta-down: #d03b3b;
+
+  display: flex;
+  flex-direction: column;
+  gap: $space-6;
+}
+
+:global([data-theme='dark']) .page {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --delta-up: #0ca30c;
+  --delta-down: #e66767;
+}
+
+// ─── Demo banner ──────────────────────────────────────────────────────────────
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: $space-3;
+  padding: $space-3 $space-4;
+  border: 1px solid rgba(250, 178, 25, 0.4);
+  background: rgba(250, 178, 25, 0.1);
+  border-radius: $radius-lg;
+  font-size: $text-sm;
+  color: var(--text-secondary);
+  line-height: $leading-normal;
+
+  svg { flex-shrink: 0; margin-top: 2px; color: #b57a00; }
+  strong { color: var(--text-primary); }
+  code {
+    font-family: $font-mono;
+    font-size: 0.85em;
+    padding: 1px 5px;
+    border-radius: $radius-sm;
+    background: var(--bg-surface);
+  }
+}
+
+:global([data-theme='dark']) .banner svg { color: #fab219; }
+
+// ─── Header ───────────────────────────────────────────────────────────────────
+.header {
+  @include flex-between;
+  flex-wrap: wrap;
+  gap: $space-4;
+}
+
+.title {
+  font-size: $text-3xl;
+  font-weight: $font-extrabold;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  margin-top: $space-1;
+  font-size: $text-sm;
+  color: var(--text-muted);
+}
+
+.ranges {
+  display: flex;
+  gap: $space-1;
+  padding: $space-1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: $radius-full;
+}
+
+.rangeBtn {
+  padding: $space-2 $space-4;
+  border-radius: $radius-full;
+  font-size: $text-sm;
+  font-weight: $font-medium;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all $transition-fast;
+
+  &:hover { color: var(--text-primary); }
+}
+
+.rangeActive {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-weight: $font-semibold;
+  box-shadow: $shadow-sm;
+}
+
+// ─── Stat tiles ───────────────────────────────────────────────────────────────
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: $space-4;
+
+  @include lg { grid-template-columns: repeat(4, 1fr); }
+}
+
+.tile {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: $radius-2xl;
+  padding: $space-5 $space-6;
+}
+
+.tileLabel {
+  font-size: $text-sm;
+  color: var(--text-muted);
+  font-weight: $font-medium;
+}
+
+.tileValue {
+  margin: $space-2 0 $space-2;
+  font-size: $text-3xl;
+  font-weight: $font-extrabold;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.delta {
+  display: flex;
+  align-items: center;
+  gap: $space-1;
+  font-size: $text-xs;
+  font-weight: $font-semibold;
+
+  &.up { color: var(--delta-up); }
+  &.down { color: var(--delta-down); }
+}
+
+.deltaNote {
+  color: var(--text-muted);
+  font-weight: $font-normal;
+}
+
+// ─── Cards ────────────────────────────────────────────────────────────────────
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: $radius-2xl;
+  overflow: hidden;
+}
+
+.cardHeader {
+  @include flex-between;
+  gap: $space-3;
+  padding: $space-4 $space-6;
+  border-bottom: 1px solid var(--border);
+}
+
+.cardTitle {
+  font-size: $text-base;
+  font-weight: $font-bold;
+  color: var(--text-primary);
+}
+
+.cardMeta {
+  font-size: $text-xs;
+  color: var(--text-muted);
+}
+
+.cardLink {
+  font-size: $text-sm;
+  color: var(--color-primary);
+  font-weight: $font-medium;
+  text-decoration: none;
+  &:hover { text-decoration: underline; }
+}
+
+.cardBody {
+  padding: $space-5 $space-6 $space-6;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: $space-6;
+
+  @include lg { grid-template-columns: 1fr 1fr; }
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-2;
+  font-size: $text-xs;
+  font-weight: $font-semibold;
+  color: var(--text-primary);
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: $radius-full;
+  background: #0ca30c;
+}
+
+// ─── Devices (stacked bar + direct labels) ────────────────────────────────────
+.stack {
+  display: flex;
+  gap: 2px; // 2px surface gap between segments
+  height: 14px;
+  margin-bottom: $space-5;
+}
+
+.stackSeg {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.d1 { background: var(--series-1); }
+.d2 { background: var(--series-2); }
+.d3 { background: var(--series-3); }
+
+.deviceList {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+  list-style: none;
+}
+
+.deviceItem {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  font-size: $text-sm;
+}
+
+.chip {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.deviceLabel {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.deviceValue {
+  color: var(--text-primary);
+  font-weight: $font-semibold;
+  font-variant-numeric: tabular-nums;
+}
+
+// ─── Bar lists ────────────────────────────────────────────────────────────────
+.barList {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+  list-style: none;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 108px 1fr 56px 34px;
+  align-items: center;
+  gap: $space-3;
+  font-size: $text-sm;
+
+  @include sm { grid-template-columns: 132px 1fr 64px 38px; }
+}
+
+.barLabel {
+  color: var(--text-secondary);
+  @include truncate;
+}
+
+.barTrack {
+  height: 10px;
+  background: var(--bg-surface);
+  border-radius: $radius-full;
+  overflow: hidden;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: var(--series-1);
+  border-radius: 4px; // 4px rounded data-end
+}
+
+.barValue {
+  text-align: right;
+  color: var(--text-primary);
+  font-weight: $font-semibold;
+  font-variant-numeric: tabular-nums;
+}
+
+.barShare {
+  text-align: right;
+  color: var(--text-muted);
+  font-size: $text-xs;
+  font-variant-numeric: tabular-nums;
+}
+
+// ─── Top pages table ──────────────────────────────────────────────────────────
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $text-sm;
+
+  th {
+    padding: $space-3 $space-6;
+    text-align: left;
+    font-size: $text-xs;
+    font-weight: $font-semibold;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: $space-3 $space-6;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    vertical-align: middle;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--bg-secondary); }
+}
+
+.rankCol {
+  width: 48px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.numCol {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  font-weight: $font-medium;
+}
+
+.pageTitle {
+  display: block;
+  color: var(--text-primary);
+  font-weight: $font-medium;
+  max-width: 420px;
+  @include truncate;
+}
+
+.pagePath {
+  display: block;
+  margin-top: 2px;
+  font-size: $text-xs;
+  color: var(--text-muted);
+  max-width: 420px;
+  @include truncate;
+}
