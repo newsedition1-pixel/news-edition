@@ -62,7 +62,7 @@ VOICE — write like an experienced Indian newsroom reporter, not like an assist
 - Subheadings (<h2>) say something specific about the section, for example "What the order changes for borrowers". Never use "Introduction", "Overview", "Background" or "Conclusion".
 - Do not end with a summary or a moral. End on the next concrete step, date or open question from the reports.
 - Never write: "in today's fast-paced world", "it is important to note", "in conclusion", "delve", "tapestry", "landscape", "navigate", "testament", "game-changer", "plays a crucial role", "only time will tell", "remains to be seen", "sheds light on", "multifaceted", "stay tuned". Do not use rhetorical questions as paragraph openers. Do not use lists of three adjectives. Do not use em dashes more than twice.
-- Do not copy sentences. No run of eight or more words may be identical to a report, except inside a quotation.
+- Do not copy sentences. No run of eight or more words may be identical to a report, except inside a quotation. Court orders, government notices and press statements are copied most often: restate them in your own sentence structure (start from a different subject, split or merge sentences, replace legal wording with plain words) and keep only names, numbers, dates and official titles unchanged.
 
 HEADLINE — the reader must want to open it
 - 45 to 70 characters. Lead with the concrete subject and the most surprising or consequential fact; say what changes, who is affected or what is at stake. The article must deliver exactly what the headline promises.
@@ -111,5 +111,5 @@ export function buildRetryPrompt(issues: string[]): string {
   return `Your draft was rejected by the fact and quality check for these reasons:
 ${issues.map((i) => `- ${i}`).join('\n')}
 
-Rewrite the whole article and return the complete JSON object again. Fix every point above. Keep everything that was correct. Do not add any fact that is not in the reports.`
+Rewrite the whole article and return the complete JSON object again. Fix every point above.${issues.some((i) => /copied/i.test(i)) ? ' Where wording was copied, do not just swap a few words: rebuild those sentences from a different starting point, in plain language, keeping only names, numbers and dates unchanged.' : ''} Keep everything that was correct. Do not add any fact that is not in the reports.`
 }

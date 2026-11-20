@@ -8,6 +8,8 @@ export const NEWS_AUTO_PUBLISH_KEY = 'newsAutoPublish'
 /** Owner decision (20 Nov 2026): articles that pass every check are published without waiting for an editor. */
 export const DEFAULT_NEWS_AUTO_PUBLISH = true
 export const NEWS_SCHEDULE_KEY = 'newsScheduleEnabled'
+/** JSON map of story URL -> time the schedule failed to turn it into an article (see lib/news/failed.ts). */
+export const NEWS_SCHEDULE_FAILED_KEY = 'newsScheduleFailed'
 /** Owner decision (20 Nov 2026): one article every 30 minutes, started by the scheduled GitHub workflow. */
 export const DEFAULT_NEWS_SCHEDULE_ENABLED = true
 export const DEFAULT_NEWS_WORD_LENGTH = 800
