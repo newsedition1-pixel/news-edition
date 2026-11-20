@@ -200,7 +200,7 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
           imageMode: 'licensed_first',
           uploadedBy: target.authorId,
         })
-        const saved = await saveBuiltArticle(built, target.authorId, autoPublish)
+        const saved = await saveBuiltArticle(built, target.authorId, autoPublish, { strength: story.publisherCount + (story.trendMatch ? 1 : 0) })
         attempt.result = saved.published ? 'published' : `draft (${saved.holdReason ?? 'auto-publish is off'})`
         return {
           ...out,

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/dal'
 import { db } from '@/lib/db'
 import { articles, categories } from '@/lib/db/schema'
@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { slugify, sanitizeFaqs } from '@/lib/utils'
 import { notifyIndexing } from '@/lib/googleIndexing'
+import { shareArticle } from '@/lib/social/share'
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,6 +58,8 @@ export async function POST(request: NextRequest) {
       notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
       revalidatePath(`/article/${article.slug}`)
       revalidatePath('/')
+      // Social media (off unless the owner turned it on); runs after the response and never throws.
+      after(() => shareArticle(article.id).then(() => undefined))
     }
 
     return NextResponse.json({ id: article.id, slug: article.slug })

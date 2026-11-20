@@ -14,6 +14,11 @@ export const NEWS_SCHEDULE_FAILED_KEY = 'newsScheduleFailed'
 export const NEWS_SCHEDULE_TRIED_KEY = 'newsScheduleTried'
 /** Owner decision (20 Nov 2026): one article every 30 minutes, started by the scheduled GitHub workflow. */
 export const DEFAULT_NEWS_SCHEDULE_ENABLED = true
+/** How published articles are shared on social media: 'off' (nothing), 'dry' (write the posts, send nothing) or 'on'. */
+export const SOCIAL_MODE_KEY = 'socialAutoPost'
+export type SocialMode = 'off' | 'dry' | 'on'
+/** What was shared, as JSON (see lib/social/log.ts). */
+export const SOCIAL_LOG_KEY = 'socialPostLog'
 export const DEFAULT_NEWS_WORD_LENGTH = 800
 export const MIN_NEWS_WORD_LENGTH = 600
 export const MAX_NEWS_WORD_LENGTH = 4000
@@ -53,4 +58,10 @@ export async function getNewsAutoPublish(): Promise<boolean> {
 export async function getNewsScheduleEnabled(): Promise<boolean> {
   const stored = await getSetting(NEWS_SCHEDULE_KEY)
   return stored === null ? DEFAULT_NEWS_SCHEDULE_ENABLED : stored === 'true'
+}
+
+/** Social sharing mode. Off until the owner turns it on (it posts in public, so it never defaults to on). */
+export async function getSocialMode(): Promise<SocialMode> {
+  const stored = await getSetting(SOCIAL_MODE_KEY)
+  return stored === 'on' || stored === 'dry' ? stored : 'off'
 }

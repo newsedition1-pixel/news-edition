@@ -4,6 +4,7 @@ import { articles } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { notifyIndexing } from '@/lib/googleIndexing'
+import { shareArticle } from '@/lib/social/share'
 import { slugFromTitle } from './meta'
 import type { BuiltArticle } from './pipeline'
 
@@ -19,9 +20,15 @@ export interface SavedArticle {
 /**
  * Saves a finished article. When `autoPublish` is on and the article has nothing left to doubt
  * (`stats.holdReason` is empty) it goes live: Google is told and the home and article pages are
- * refreshed. Otherwise it is a draft for an editor.
+ * refreshed and, when sharing is on, the article goes out on social media. Otherwise it is a draft for an editor.
  */
-export async function saveBuiltArticle(built: BuiltArticle, authorId: string, autoPublish: boolean): Promise<SavedArticle> {
+export async function saveBuiltArticle(
+  built: BuiltArticle,
+  authorId: string,
+  autoPublish: boolean,
+  /** `strength`: how many trusted publishers carried the story (+1 if trending); leave out for an editor's own run. */
+  opts: { strength?: number } = {},
+): Promise<SavedArticle> {
   const baseSlug = slugFromTitle(built.title)
   const taken = await db.select({ id: articles.id }).from(articles).where(eq(articles.slug, baseSlug)).limit(1)
   const slug = taken.length > 0 ? `${baseSlug}-${Date.now().toString(36)}` : baseSlug
@@ -59,6 +66,8 @@ export async function saveBuiltArticle(built: BuiltArticle, authorId: string, au
     notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
     revalidatePath(`/article/${article.slug}`)
     revalidatePath('/')
+    // Social media (off unless the owner turned it on); never throws.
+    await shareArticle(article.id, { strength: opts.strength })
   }
   revalidatePath('/admin/articles')
 
