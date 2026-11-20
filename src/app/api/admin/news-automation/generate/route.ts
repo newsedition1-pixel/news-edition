@@ -8,6 +8,7 @@ import { slugify, sanitizeFaqs } from '@/lib/utils'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { fetchSourcePage } from '@/lib/news/sourcePage'
 import { rewriteArticle, generateCoverImage } from '@/lib/ai/openai'
+import { cleanSourceName, withSourceNote } from '@/lib/sources'
 import { clampWordLength, getNewsWordLength, setSetting, NEWS_WORD_LENGTH_KEY } from '@/lib/settings'
 import type { NewsCandidate } from '@/lib/news/googleNews'
 
@@ -99,10 +100,14 @@ export async function POST(request: NextRequest) {
         }
 
         const page = await fetchSourcePage(item.sourceUrl)
+        // Named source: the publisher the news feed reported (e.g. "The Hindu"). It is passed to
+        // the AI for attribution and also appended to the article as a visible "Source:" link.
+        const sourceName = cleanSourceName(item.source)
         const rewritten = await rewriteArticle({
           title: item.title,
           snippet: item.snippet || '',
           sourceDescription: page.description,
+          sourceName,
           categories: categoryChoices,
           wordLength,
           faqCount,
@@ -142,7 +147,7 @@ export async function POST(request: NextRequest) {
         const [article] = await db.insert(articles).values({
           title: rewritten.title,
           slug,
-          content: rewritten.content,
+          content: withSourceNote(rewritten.content, { name: sourceName, url: page.finalUrl || item.sourceUrl }),
           excerpt: rewritten.excerpt || null,
           coverImage: cover?.url || null,
           coverImageAlt: rewritten.imageAlt || null,

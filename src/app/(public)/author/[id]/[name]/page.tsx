@@ -9,7 +9,7 @@ import { eq, and, desc } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { ArticleCard } from '@/components/news/ArticleCard'
 import { slugify } from '@/lib/utils'
-import { siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, clip, publisherJsonLd } from '@/lib/seo'
+import { siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, clip, publisherJsonLd, authorRoleLabel } from '@/lib/seo'
 import styles from './page.module.scss'
 
 interface Props {
@@ -77,7 +77,7 @@ export default async function AuthorPage({ params }: Props) {
 
   const isOwnProfile = session?.user?.id === author.id
   const initial = author.name.charAt(0).toUpperCase()
-  const roleLabel = author.role === 'owner' ? 'Editor-in-Chief' : author.role === 'admin' ? 'Editor' : 'Contributor'
+  const roleLabel = authorRoleLabel(author.role)
   const authorUrl = `${siteUrl}/author/${author.id}/${canonical}`
 
   const sameAs = [author.twitterUrl, author.facebookUrl, author.instagramUrl, author.linkedinUrl, author.websiteUrl].filter(Boolean)

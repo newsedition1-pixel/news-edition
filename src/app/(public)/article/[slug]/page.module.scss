@@ -159,6 +159,54 @@
   margin-bottom: $space-8;
 }
 
+.authorBox {
+  display: flex;
+  gap: $space-3;
+  margin: $space-8 0 $space-6;
+  padding: $space-4;
+  border: 1px solid var(--border);
+  border-radius: $radius-lg;
+  background: var(--bg-secondary);
+}
+
+.authorBoxText { min-width: 0; }
+
+.authorBoxLabel {
+  margin: 0 0 2px;
+  font-size: $text-xs;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.authorBoxName {
+  font-weight: $font-semibold;
+  color: var(--text-primary);
+  text-decoration: none;
+  &:hover { text-decoration: underline; }
+}
+
+.authorBoxRole {
+  margin-left: $space-2;
+  font-size: $text-xs;
+  color: var(--text-muted);
+}
+
+.authorBoxBio {
+  margin: $space-2 0 0;
+  font-size: $text-sm;
+  color: var(--text-secondary);
+}
+
+.authorBoxMore {
+  display: inline-block;
+  margin-top: $space-2;
+  font-size: $text-sm;
+  color: var(--color-primary);
+  text-decoration: none;
+  &:hover { text-decoration: underline; }
+}
+
 .tags {
   display: flex;
   align-items: center;

@@ -1,9 +1,15 @@
 import 'server-only'
+import { isGoogleNewsUrl, safeHttpUrl } from '@/lib/sources'
 
 export interface SourcePageInfo {
   imageUrl: string | null
   /** og:description / meta description — extra grounding for the AI rewrite. */
   description: string | null
+  /**
+   * The publisher's own URL after redirects, when the fetch landed on it. Null when the
+   * redirect chain ended on a Google News page (those are JS redirects we cannot follow).
+   */
+  finalUrl: string | null
 }
 
 function metaContent(html: string, patterns: RegExp[]): string | null {
@@ -21,7 +27,7 @@ function metaContent(html: string, patterns: RegExp[]): string | null {
  * falls back to AI image generation and the RSS snippet.
  */
 export async function fetchSourcePage(url: string): Promise<SourcePageInfo> {
-  const empty: SourcePageInfo = { imageUrl: null, description: null }
+  const empty: SourcePageInfo = { imageUrl: null, description: null, finalUrl: null }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 9000)
   try {
@@ -57,7 +63,9 @@ export async function fetchSourcePage(url: string): Promise<SourcePageInfo> {
       /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
     ])
 
-    return { imageUrl, description: description ? description.slice(0, 600) : null }
+    const publisherUrl = isGoogleNewsUrl(finalUrl) ? null : safeHttpUrl(finalUrl)
+
+    return { imageUrl, description: description ? description.slice(0, 600) : null, finalUrl: publisherUrl }
   } catch {
     return empty
   } finally {
