@@ -25,6 +25,20 @@ test('slug is capped at a word boundary', () => {
   assert.equal(slugFromTitle('Short title'), 'short-title')
 })
 
+test('one shared word (a section label or a single place name) is not enough for a link', () => {
+  const rows = [
+    { title: 'Global divisions surface amid UN Secretary-General race', slug: 'un', tags: ['state politics', 'united nations'], categoryId: 11 },
+    { title: 'RSS advocates diversion of Indus river water to support north Indian farmers', slug: 'indus', tags: ['water management', 'indus river'], categoryId: 11 },
+    { title: 'BJP secures three seats in Karnataka Legislative Council elections', slug: 'council', tags: ['karnataka', 'bjp'], categoryId: 11 },
+    { title: 'Karnataka reservoirs fill as Cauvery inflow rises', slug: 'inflow', tags: ['cauvery water dispute', 'karnataka'], categoryId: 11 },
+  ]
+  const out = rankInternalCandidates(
+    { title: 'Supreme Court turns down Tamil Nadu request for more Cauvery water', tags: ['cauvery water dispute', 'karnataka', 'cauvery water management authority', 'state politics'], categoryId: 11 },
+    rows
+  )
+  assert.deepEqual(out.map((o) => o.slug), ['inflow'])
+})
+
 test('related articles share distinctive words, not just "india"', () => {
   const rows = [
     { title: 'How repo rate changes move your EMI', slug: 'emi', tags: ['repo rate'], categoryId: 1 },
