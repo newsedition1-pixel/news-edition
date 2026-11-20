@@ -1,0 +1,47 @@
+name: News schedule
+
+# Publishes one article every 30 minutes by calling the site's /api/cron/news route.
+# (Vercel Hobby cron only runs once a day, so GitHub Actions does the timing.)
+# No secret is needed: the run proves its identity with GitHub's OIDC token, and the route only
+# lets in this workflow file on the master branch (see src/app/api/cron/news/route.ts).
+# Pause or resume from Admin > News Automation, or run once by hand from the Actions tab.
+# Note: GitHub can start scheduled runs a few minutes late, and switches schedules off after
+# 60 days without any repository activity.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Ignore the 20-minute "ran recently" guard'
+        type: boolean
+        default: false
+
+concurrency:
+  group: news-schedule
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Publish the next article
+        env:
+          AUDIENCE: https://newsedition.in
+          FORCE: ${{ inputs.force && '1' || '0' }}
+        run: |
+          set -eu
+          ENCODED_AUDIENCE=$(jq -rn --arg audience "$AUDIENCE" '$audience | @uri')
+          TOKEN=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${ENCODED_AUDIENCE}" | jq -r .value)
+          code=$(curl -sS -o response.json -w '%{http_code}' --max-time 295 \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://newsedition.in/api/cron/news?force=$FORCE")
+          cat response.json
+          echo
+          test "$code" = "200"

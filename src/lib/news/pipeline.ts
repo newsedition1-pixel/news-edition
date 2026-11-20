@@ -35,6 +35,8 @@ export interface PipelineOptions {
   faqCount: number
   imageMode: ImageMode
   uploadedBy: string
+  /** When set, the article goes into this category and the model's own choice is ignored. */
+  fixedCategoryId?: number
 }
 
 export interface BuiltArticle {
@@ -245,7 +247,7 @@ export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptio
   const reports = await gatherReports(story)
   const { article, content, faqs, report, attempts } = await rewriteVerified(story, reports, opts)
 
-  const categoryId = article.categorySlug ? opts.categories.find((c) => c.slug === article.categorySlug)?.id ?? null : null
+  const categoryId = opts.fixedCategoryId ?? (article.categorySlug ? opts.categories.find((c) => c.slug === article.categorySlug)?.id ?? null : null)
   const tags = finalizeTags(article.tags, article.focusKeyword)
   const seo = finalizeSeo({ title: article.title, seoTitle: article.seoTitle, seoDescription: article.seoDescription, excerpt: article.excerpt })
 

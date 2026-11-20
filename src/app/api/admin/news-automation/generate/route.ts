@@ -3,12 +3,10 @@ import { requireAdmin } from '@/lib/dal'
 import { db } from '@/lib/db'
 import { articles, categories } from '@/lib/db/schema'
 import { eq, inArray } from 'drizzle-orm'
-import { revalidatePath } from 'next/cache'
 import { clampWordLength, getNewsAutoPublish, getNewsWordLength, setSetting, NEWS_AUTO_PUBLISH_KEY, NEWS_WORD_LENGTH_KEY } from '@/lib/settings'
-import { notifyIndexing } from '@/lib/googleIndexing'
 import { buildArticleFromStory, SkipStory, type ImageMode, type StoryRef } from '@/lib/news/pipeline'
 import { isTrustedUrl } from '@/lib/news/publishers'
-import { slugFromTitle } from '@/lib/news/meta'
+import { saveBuiltArticle } from '@/lib/news/publish'
 import { safeHttpUrl } from '@/lib/sources'
 
 export const runtime = 'nodejs'
@@ -135,55 +133,21 @@ export async function POST(request: NextRequest) {
 
         const built = await buildArticleFromStory(story, { categories: cats, wordLength, faqCount, imageMode, uploadedBy: session.user.id })
 
-        const baseSlug = slugFromTitle(built.title)
-        const taken = await db.select({ id: articles.id }).from(articles).where(eq(articles.slug, baseSlug)).limit(1)
-        const slug = taken.length > 0 ? `${baseSlug}-${Date.now().toString(36)}` : baseSlug
-
-        const holdReason = built.stats.holdReason
-        const publish = autoPublish && !holdReason
-        const now = new Date()
-        const [article] = await db.insert(articles).values({
-          title: built.title,
-          slug,
-          content: built.content,
-          excerpt: built.excerpt || null,
-          coverImage: built.coverImage,
-          coverImageAlt: built.coverImageAlt,
-          coverImagePublicId: built.coverImagePublicId,
-          categoryId: built.categoryId,
-          authorId: session.user.id,
-          status: publish ? 'published' : 'draft',
-          tags: built.tags.length ? built.tags : null,
-          faqs: built.faqs,
-          seoTitle: built.seoTitle || null,
-          seoDescription: built.seoDescription || null,
-          sourceUrl: built.sourceUrl,
-          isAiGenerated: true,
-          publishedAt: publish ? now : null,
-          createdAt: now,
-          updatedAt: now,
-        }).returning()
-
+        const saved = await saveBuiltArticle(built, session.user.id, autoPublish)
         created++
-        if (publish) {
-          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
-          notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
-          revalidatePath(`/article/${article.slug}`)
-          revalidatePath('/')
-        }
         return {
-          title: article.title,
+          title: saved.title,
           sourceUrl: built.sourceUrl,
-          status: publish ? 'published' : 'draft',
-          id: article.id,
-          slug: article.slug,
+          status: saved.published ? 'published' : 'draft',
+          id: saved.id,
+          slug: saved.slug,
           imageSource: built.stats.imageSource,
           faqCount: built.faqs?.length ?? 0,
           wordCount: built.stats.wordCount,
           internalLinks: built.stats.internalLinks,
           externalLinks: built.stats.externalLinks,
           warnings: built.stats.warnings,
-          reason: autoPublish && holdReason ? `Saved as a draft for an editor: ${holdReason}.` : undefined,
+          reason: autoPublish && saved.holdReason ? `Saved as a draft for an editor: ${saved.holdReason}.` : undefined,
         }
       } catch (err) {
         if (err instanceof SkipStory) return { title: story.title, sourceUrl: leadUrl, status: 'skipped', reason: err.message }
@@ -191,8 +155,6 @@ export async function POST(request: NextRequest) {
         return { title: story.title, sourceUrl: leadUrl, status: 'failed', reason: err instanceof Error ? err.message : 'Processing failed' }
       }
     })
-
-    if (created > 0) revalidatePath('/admin/articles')
 
     return NextResponse.json({ created, total: stories.length, results })
   } catch (error) {

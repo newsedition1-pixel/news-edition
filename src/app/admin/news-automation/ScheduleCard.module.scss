@@ -1,0 +1,61 @@
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: $radius-2xl;
+  padding: $space-5;
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-3;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: $text-base;
+  font-weight: $font-semibold;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.note {
+  font-size: $text-sm;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.toggle {
+  padding: $space-2 $space-4;
+  border-radius: $radius-md;
+  border: 1.5px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: $text-sm;
+  font-weight: $font-semibold;
+  cursor: pointer;
+  &:disabled { opacity: 0.6; cursor: wait; }
+}
+
+.on { border-color: var(--color-primary); color: var(--color-primary); }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $text-sm;
+  th, td {
+    text-align: left;
+    padding: $space-2 $space-2;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+  }
+  th { color: var(--text-muted); font-weight: $font-semibold; }
+}
+
+.missing { color: #b42318; font-weight: $font-semibold; }
+.ok { color: var(--text-secondary); }
+.error { color: #b42318; font-size: $text-sm; margin: 0; }
