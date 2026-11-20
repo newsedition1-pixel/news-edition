@@ -8,6 +8,7 @@ import { shareArticle } from '@/lib/social/share'
 import { slugFromTitle } from './meta'
 import { decidePlacement, type Placement } from './placement'
 import { loadPlacementContext } from './placementDb'
+import { recordAudit } from './auditDb'
 import type { BuiltArticle } from './pipeline'
 
 export interface SavedArticle {
@@ -54,7 +55,7 @@ export async function saveBuiltArticle(
           title: built.title,
           wordCount: built.stats.wordCount,
           cover: built.stats.imageSource,
-          auditScore: null,
+          auditScore: built.stats.audit?.score ?? null,
         },
         await loadPlacementContext(built.categoryId, now),
       )
@@ -101,6 +102,21 @@ export async function saveBuiltArticle(
     await shareArticle(article.id, { strength: opts.strength })
   }
   revalidatePath('/admin/articles')
+
+  // What the audit found, for the admin screen (never throws).
+  const audit = built.stats.audit
+  if (audit && audit.mode !== 'off') {
+    await recordAudit({
+      at: now.toISOString(),
+      title: article.title,
+      slug: article.slug,
+      mode: audit.mode,
+      attempts: built.stats.attempts,
+      published: publish,
+      held: holdReason,
+      summary: audit,
+    })
+  }
 
   return { id: article.id, slug: article.slug, title: article.title, published: publish, holdReason, placement }
 }

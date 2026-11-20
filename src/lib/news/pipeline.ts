@@ -4,9 +4,11 @@ import { articles, assets } from '@/lib/db/schema'
 import { desc, eq } from 'drizzle-orm'
 import { deleteFromCloudinary, uploadToCloudinary } from '@/lib/cloudinary'
 import { generateCoverImage, rewriteArticle, type RewrittenArticle } from '@/lib/ai/openai'
+import { runLlmAudit } from '@/lib/ai/audit'
 import { sanitizeFaqs } from '@/lib/utils'
 import { fetchTrustedArticle, type TrustedArticle } from './feeds'
-import { assessArticle, sanitizeArticleHtml, type QualityReport } from './quality'
+import { assessArticle, htmlToText, sanitizeArticleHtml, type QualityReport } from './quality'
+import { auditArticle, betterAudit, chooseSeo, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, type AuditMode, type AuditResult, type AuditSummary, type LlmFindings } from './audit'
 import { assembleArticleHtml, primaryDocumentLinks, type ExternalSource } from './links'
 import { buildImageCredit, buildPublisherImageCredit, looksLikePlaceholderImage, searchCommonsImage } from './images'
 import { ensureWatermark, watermarkTransformation } from './watermark'
@@ -71,6 +73,8 @@ export interface BuiltArticle {
     holdReason: string | null
     warnings: string[]
     sourcesUsed: string[]
+    /** The pre-publication audit (see audit.ts); null when it is switched off. */
+    audit: (AuditSummary & { mode: AuditMode }) | null
   }
 }
 
@@ -132,11 +136,20 @@ async function gatherReports(story: StoryRef): Promise<TrustedArticle[]> {
   return picked
 }
 
-async function rewriteVerified(
-  story: StoryRef,
-  reports: TrustedArticle[],
-  opts: PipelineOptions
-): Promise<{ article: RewrittenArticle; content: string; faqs: { question: string; answer: string }[]; report: QualityReport; attempts: number }> {
+interface Verified {
+  article: RewrittenArticle
+  content: string
+  faqs: { question: string; answer: string }[]
+  report: QualityReport
+  attempts: number
+  sourceText: string
+  /** Pre-publication audit of this draft (null when switched off). */
+  audit: AuditResult | null
+  /** The model's claim-by-claim findings after verification (null when that pass failed). */
+  llm: LlmFindings | null
+}
+
+async function rewriteVerified(story: StoryRef, reports: TrustedArticle[], opts: PipelineOptions, mode: AuditMode): Promise<Verified> {
   const dateLabel = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date())
   // The date line is part of what the model may rely on, so day-of-month figures are not flagged as invented.
   const sourceText = [story.title, dateLabel, ...reports.flatMap((r) => [r.text, r.description ?? ''])].join('\n\n')
@@ -158,10 +171,12 @@ async function rewriteVerified(
 
   let retry: { previousRaw: string; issues: string[] } | undefined
   let last: QualityReport | null = null
+  let best: Verified | null = null
   for (let attempt = 1; attempt <= 2; attempt++) {
     const { article, raw } = await rewriteArticle(input, retry)
     const content = sanitizeArticleHtml(article.content)
     const faqs = sanitizeFaqs(article.faqs) ?? []
+    const publisherNames = reports.map((r) => r.publisher.name)
     const report = assessArticle({
       title: article.title,
       contentHtml: content,
@@ -171,12 +186,60 @@ async function rewriteVerified(
       seoTitle: article.seoTitle,
       seoDescription: article.seoDescription,
       minWords: MIN_NEWS_WORD_LENGTH,
-      publisherNames: reports.map((r) => r.publisher.name),
+      publisherNames,
     })
-    if (report.ok) return { article, content, faqs, report, attempts: attempt }
-    last = report
-    retry = { previousRaw: raw, issues: report.blocking }
+    if (!report.ok) {
+      last = report
+      retry = { previousRaw: raw, issues: report.blocking }
+      continue
+    }
+
+    // Pre-publication audit: the code checks plus a claim-by-claim pass against the reports.
+    let audit: AuditResult | null = null
+    let llm: LlmFindings | null = null
+    if (mode !== 'off') {
+      const bodyText = htmlToText(content)
+      const articleText = `${bodyText}\n${faqs.map((f) => `${f.question} ${f.answer}`).join('\n')}`
+      llm = verifyFindings(
+        await runLlmAudit({
+          title: article.title,
+          articleText: bodyText,
+          faqs,
+          reports: reports.map((r) => ({ publisherName: r.publisher.name, text: r.text })),
+          seoTitle: article.seoTitle,
+          seoDescription: article.seoDescription,
+          focusKeyword: article.focusKeyword,
+        }),
+        articleText,
+        sourceText,
+      )
+      audit = auditArticle({
+        title: article.title,
+        contentHtml: content,
+        faqs,
+        sourceText,
+        publisherNames,
+        seoTitle: article.seoTitle,
+        seoDescription: article.seoDescription,
+        focusKeyword: article.focusKeyword,
+        quality: report,
+        llm,
+      })
+    }
+
+    const candidate: Verified = { article, content, faqs, report, attempts: attempt, sourceText, audit, llm }
+    // Nothing to fix, or the audit is only being recorded: this draft goes on.
+    if (!audit || audit.decision === 'PUBLISH' || mode === 'log') return candidate
+    best = !best || !best.audit ? candidate : betterAudit(best.audit, audit) === audit ? candidate : best
+    if (attempt < 2) {
+      const issues = retryIssues(audit)
+      retry = { previousRaw: raw, issues: issues.length ? issues : audit.reasons }
+      continue
+    }
+    return best
   }
+  // The second draft failed the quality checks: keep the first one if it passed them (it is held for an editor).
+  if (best) return best
   throw new SkipStory(`Rejected by the fact check after a retry: ${last?.blocking.join(' ') ?? 'unknown reason'}`)
 }
 
@@ -253,11 +316,15 @@ async function loadPublished(): Promise<PublishedRow[]> {
 
 export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptions): Promise<BuiltArticle> {
   const reports = await gatherReports(story)
-  const { article, content, faqs, report, attempts } = await rewriteVerified(story, reports, opts)
+  const mode = parseAuditMode(process.env.NEWS_AUDIT_MODE)
+  const { article, content, faqs, report, attempts, sourceText, audit: draftAudit, llm } = await rewriteVerified(story, reports, opts, mode)
 
   const categoryId = opts.fixedCategoryId ?? (article.categorySlug ? opts.categories.find((c) => c.slug === article.categorySlug)?.id ?? null : null)
   const tags = finalizeTags(article.tags, article.focusKeyword)
-  const seo = finalizeSeo({ title: article.title, seoTitle: article.seoTitle, seoDescription: article.seoDescription, excerpt: article.excerpt })
+  const finalSeo = finalizeSeo({ title: article.title, seoTitle: article.seoTitle, seoDescription: article.seoDescription, excerpt: article.excerpt })
+  // The audit's improved title and description replace the writer's only when the writer's fail the SEO rules and the improved pair passes them.
+  const chosen = chooseSeo(finalSeo, llm?.seo, article.focusKeyword)
+  const seo = chosen.replaced ? { ...finalSeo, seoTitle: chosen.seoTitle, seoDescription: chosen.seoDescription } : finalSeo
 
   const cover = await pickCover(opts.imageMode, article, reports, opts.uploadedBy)
   const warnings = [...report.warnings]
@@ -267,6 +334,10 @@ export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptio
   let holdReason: string | null = null
   if (!cover) holdReason = 'no cover image could be saved'
   else if (report.ungroundedNames.length >= 3) holdReason = `names that are not in the source reports (${report.ungroundedNames.slice(0, 4).join(', ')})`
+  // The audit verdict on the text decides; the cover and links only change the SEO and Discover parts of the score.
+  else if (draftAudit && mode === 'enforce' && draftAudit.decision !== 'PUBLISH') {
+    holdReason = `pre-publication audit ${draftAudit.decision} (${draftAudit.score}/100): ${draftAudit.reasons.slice(0, 2).join(' ')}`
+  }
 
   const primary: ExternalSource = { name: reports[0].publisher.name, url: reports[0].finalUrl, title: story.sources.find((s) => s.url === reports[0].finalUrl)?.title }
   const others: ExternalSource[] = reports.slice(1).map((r) => ({
@@ -285,6 +356,24 @@ export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptio
     documents,
     imageCreditHtml: cover?.creditHtml,
   })
+
+  // Score again now that the links and the cover are known; the findings about the text are the same.
+  const finalAudit = draftAudit
+    ? auditArticle({
+        title: article.title,
+        contentHtml: content,
+        faqs,
+        sourceText,
+        publisherNames: reports.map((r) => r.publisher.name),
+        seoTitle: seo.seoTitle,
+        seoDescription: seo.seoDescription,
+        focusKeyword: article.focusKeyword,
+        quality: report,
+        llm,
+        links: { internal: assembled.internalLinks, external: assembled.externalLinks, documents: documents.length },
+        cover: { kind: cover?.kind ?? 'none', alt: cover?.alt ?? null },
+      })
+    : null
 
   return {
     title: article.title,
@@ -309,6 +398,7 @@ export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptio
       holdReason,
       warnings,
       sourcesUsed: reports.map((r) => r.publisher.name),
+      audit: finalAudit && mode !== 'off' ? { ...summarizeAudit(finalAudit), decision: draftAudit?.decision ?? finalAudit.decision, mode } : null,
     },
   }
 }
