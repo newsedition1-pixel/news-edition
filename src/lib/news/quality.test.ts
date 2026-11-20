@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { aiPhraseHits, assessArticle, copyStats, extractFigures, extractQuotes, sanitizeArticleHtml, ungroundedProperNouns } from './quality'
+import { aiPhraseHits, assessArticle, copiedPassages, copyStats, extractFigures, extractQuotes, sanitizeArticleHtml, ungroundedProperNouns } from './quality'
 
 const SOURCE = `The Reserve Bank of India kept the repo rate unchanged at 6.5 per cent on Friday, Governor Sanjay Malhotra said after the three day meeting of the monetary policy committee in Mumbai. Retail inflation stood at 4.2 per cent in October, up from 3.7 per cent a month earlier, according to government data. "We will remain watchful on food prices," Malhotra told reporters. The committee voted 5 to 1 to hold rates. Economists at several banks expect no cut before February. Home loan borrowers will see no change in their monthly instalments for now, and the central bank also left the cash reserve ratio at 4 per cent. The bank projected growth of 6.8 per cent for the year.`
 
@@ -119,4 +119,29 @@ test('sanitizeArticleHtml removes scripts, handlers, links and unknown tags', ()
   assert.ok(clean.includes('<strong>bold</strong>'))
   assert.ok(clean.includes('<h3>sub</h3>'))
   assert.ok(clean.includes('kept text'))
+})
+
+test('possessives, spelled-out abbreviations and allowed publisher names are not invented names', () => {
+  assert.deepEqual(ungroundedProperNouns("The camp at Cox's Bazar is crowded. Karnataka's appeal failed.", 'The camp at Cox’s Bazar is crowded. Karnataka’s appeal failed.'), [])
+  assert.deepEqual(ungroundedProperNouns('The United Nations court ruled.', 'The UN court ruled.'), [])
+  assert.deepEqual(ungroundedProperNouns('According to The Hindu, the court ruled.', 'The court ruled.', ['The Hindu']), [])
+  assert.deepEqual(ungroundedProperNouns('The rate was set by Zorander.', 'The rate was set by the bank.'), ['Zorander'])
+})
+
+test('copied passages are shown so the model knows what to rebuild', () => {
+  const source = 'The Supreme Court on Friday dismissed the appeal filed by the Karnataka government against the order of the High Court on bike taxis.'
+  const output = 'Officials said little. The Supreme Court on Friday dismissed the appeal filed by the Karnataka government against the order, and work continues.'
+  const passages = copiedPassages(source, output)
+  assert.equal(passages.length, 1)
+  assert.match(passages[0], /^the supreme court on friday dismissed the appeal filed by the karnataka government against the order/)
+  assert.deepEqual(copiedPassages(source, 'A completely different sentence about something else entirely, with many words in it.'), [])
+})
+
+test('headings in Title Case do not count as invented names; the copy message names the passages', () => {
+  const sourceText = 'The tribunal heard the plea on Friday. The ministry said the scheme will continue for two more years and thousands of families will benefit from the new rules announced this week by officials in the capital city.'
+  const body = '<p>According to The Hindu, the tribunal heard the plea on Friday.</p><h2>What The Findings Mean For Families</h2><p>The ministry said the scheme will continue for two more years and thousands of families will benefit from the new rules announced this week by officials in the capital city.</p>'
+  const report = assessArticle({ title: 'Tribunal hears the plea as the ministry extends the scheme', contentHtml: body, faqs: [], sourceText, focusKeyword: 'tribunal plea', seoTitle: 'Tribunal plea', seoDescription: 'x', minWords: 5, publisherNames: ['The Hindu'] })
+  assert.equal(report.ungroundedNames.includes('Findings'), false)
+  assert.equal(report.ungroundedNames.includes('Hindu'), false)
+  assert.ok(report.blocking.some((b) => /copied/.test(b) && /rebuild each one/.test(b)))
 })

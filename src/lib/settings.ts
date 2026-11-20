@@ -10,6 +10,8 @@ export const DEFAULT_NEWS_AUTO_PUBLISH = true
 export const NEWS_SCHEDULE_KEY = 'newsScheduleEnabled'
 /** JSON map of story URL -> time the schedule failed to turn it into an article (see lib/news/failed.ts). */
 export const NEWS_SCHEDULE_FAILED_KEY = 'newsScheduleFailed'
+/** JSON map of category slug -> time the schedule last tried it, whether or not it published. */
+export const NEWS_SCHEDULE_TRIED_KEY = 'newsScheduleTried'
 /** Owner decision (20 Nov 2026): one article every 30 minutes, started by the scheduled GitHub workflow. */
 export const DEFAULT_NEWS_SCHEDULE_ENABLED = true
 export const DEFAULT_NEWS_WORD_LENGTH = 800
