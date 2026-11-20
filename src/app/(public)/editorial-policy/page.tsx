@@ -64,7 +64,12 @@ export default function EditorialPolicyPage() {
             its own words. The tool is instructed not to invent quotes, statistics or named sources.
           </p>
           <p>
-            Articles produced this way carry a visible note on the article page, so readers can tell them
+            From 20 November 2026, every AI-assisted article is saved as a draft and is published only
+            after a NewsEdition editor has read and approved it. Earlier AI-assisted articles were not
+            necessarily reviewed this way.
+          </p>
+          <p>
+            Articles produced with AI carry a visible note on the article page, so readers can tell them
             apart from articles written without AI.
           </p>
         </div>

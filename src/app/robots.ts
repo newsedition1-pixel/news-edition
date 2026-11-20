@@ -20,8 +20,10 @@ export default function robots(): MetadataRoute.Robots {
       {
         // AI search / answer engines and user-triggered fetchers: these are how
         // NewsEdition gets cited and linked in ChatGPT, Claude and Perplexity answers.
+        // GPTBot (OpenAI's crawler, also used for model training) is allowed on the
+        // owner's decision of 20 Nov 2026; move it back to the blocked group below to undo.
         userAgent: [
-          'OAI-SearchBot', 'ChatGPT-User',
+          'GPTBot', 'OAI-SearchBot', 'ChatGPT-User',
           'Claude-SearchBot', 'Claude-User',
           'PerplexityBot', 'Perplexity-User',
         ],
@@ -29,9 +31,9 @@ export default function robots(): MetadataRoute.Robots {
         disallow: PRIVATE_PATHS,
       },
       {
-        // AI model-training crawlers stay blocked (blocking these does not
+        // Other AI model-training crawlers stay blocked (blocking these does not
         // affect search or answer-engine visibility above).
-        userAgent: ['GPTBot', 'CCBot', 'anthropic-ai', 'Claude-Web', 'Omgilibot', 'FacebookBot'],
+        userAgent: ['CCBot', 'anthropic-ai', 'Claude-Web', 'Omgilibot', 'FacebookBot'],
         disallow: '/',
       },
       {

@@ -31,7 +31,7 @@ export default async function ArticlesPage({ searchParams }: Props) {
 
   const rows = await db.select({
     id: articles.id, title: articles.title, slug: articles.slug,
-    status: articles.status, isFeatured: articles.isFeatured,
+    status: articles.status, isFeatured: articles.isFeatured, isAiGenerated: articles.isAiGenerated,
     isBreaking: articles.isBreaking, viewCount: articles.viewCount,
     publishedAt: articles.publishedAt, createdAt: articles.createdAt, updatedAt: articles.updatedAt,
     categoryName: categories.name, categoryColor: categories.color,
@@ -107,7 +107,17 @@ export default async function ArticlesPage({ searchParams }: Props) {
                   )}
                 </td>
                 <td className={`${styles.authorCell} ${styles.colHideOnMobile}`}>{a.authorName || '—'}</td>
-                <td><span className={`${styles.badge} ${styles[a.status]}`}>{a.status}</span></td>
+                <td>
+                  <span className={`${styles.badge} ${styles[a.status]}`}>{a.status}</span>
+                  {a.isAiGenerated && (
+                    <span
+                      className={`${styles.badge} ${styles.ai}`}
+                      title={a.status === 'published' ? 'Created with AI tools' : 'AI draft: read and edit before publishing'}
+                    >
+                      AI
+                    </span>
+                  )}
+                </td>
                 <td className={styles.colHideOnMobile}>{a.viewCount.toLocaleString()}</td>
                 <td className={styles.dateCell}>{formatDate(a.updatedAt, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                 <td>

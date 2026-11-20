@@ -5,7 +5,6 @@ import { articles, assets, categories } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { slugify, sanitizeFaqs } from '@/lib/utils'
-import { notifyIndexing } from '@/lib/googleIndexing'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { fetchSourcePage } from '@/lib/news/sourcePage'
 import { rewriteArticle, generateCoverImage } from '@/lib/ai/openai'
@@ -67,14 +66,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Per-run options (not persisted). Defaults chosen so a bare request is safe:
-    // no paid AI image, draft (not live), 10 FAQs.
+    // no paid AI image, 10 FAQs.
     const allowImageGen = body?.generateImage === true
-    const publishNow = body?.publishNow === true
     const rawFaq = body?.faqCount
     const faqCount = rawFaq === undefined || rawFaq === null || rawFaq === ''
       ? DEFAULT_FAQS
       : Math.min(MAX_FAQS, Math.max(0, Math.round(Number(rawFaq)) || 0))
-    const targetStatus: 'published' | 'draft' = publishNow ? 'published' : 'draft'
+    // Editorial review: AI-generated articles are ALWAYS saved as drafts. An editor reads and
+    // publishes each one from Admin → Articles. A `publishNow` flag in the request is ignored.
+    const targetStatus = 'draft' as const
 
     const cats = await db.select({ id: categories.id, slug: categories.slug, name: categories.name }).from(categories).where(eq(categories.isActive, true))
     const catBySlug = new Map(cats.map((c) => [c.slug, c.id]))
@@ -156,16 +156,11 @@ export async function POST(request: NextRequest) {
           seoDescription: rewritten.seoDescription || null,
           sourceUrl: item.sourceUrl,
           isAiGenerated: true,
-          publishedAt: targetStatus === 'published' ? now : null,
+          publishedAt: null,
           createdAt: now,
           updatedAt: now,
         }).returning()
 
-        if (targetStatus === 'published') {
-          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
-          notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
-          revalidatePath(`/article/${article.slug}`)
-        }
         created++
         results.push({
           title: article.title,
@@ -188,7 +183,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (created > 0) {
-      if (publishNow) revalidatePath('/')
       revalidatePath('/admin/articles')
     }
 

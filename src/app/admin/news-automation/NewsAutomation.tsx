@@ -30,7 +30,6 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
   const [query, setQuery] = useState('')
   const [wordLength, setWordLength] = useState(defaultWordLength)
   const [generateImage, setGenerateImage] = useState(false)
-  const [publishNow, setPublishNow] = useState(false)
   const [faqCount, setFaqCount] = useState(10)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -96,7 +95,7 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
       const res = await fetch('/api/admin/news-automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToProcess, wordLength, generateImage, publishNow, faqCount }),
+        body: JSON.stringify({ items: itemsToProcess, wordLength, generateImage, faqCount }),
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error || 'Failed to generate'); return }
@@ -162,14 +161,10 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
 
           <fieldset className={styles.option}>
             <legend className={styles.optionLegend}>Publishing</legend>
-            <label className={styles.radio}>
-              <input type="radio" name="pubMode" checked={!publishNow} onChange={() => setPublishNow(false)} />
-              Save as draft
-            </label>
-            <label className={styles.radio}>
-              <input type="radio" name="pubMode" checked={publishNow} onChange={() => setPublishNow(true)} />
-              Publish immediately
-            </label>
+            <p className={styles.radio}>
+              Always saved as a draft. An editor reviews each article and publishes it from
+              Admin → Articles (look for the AI badge).
+            </p>
           </fieldset>
 
           <fieldset className={styles.option}>
@@ -247,8 +242,8 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
               disabled={generating || itemsToProcess.length === 0}
             >
               {generating
-                ? (publishNow ? 'Generating & publishing…' : 'Generating drafts…')
-                : `${publishNow ? 'Generate & publish' : 'Generate drafts'} (${itemsToProcess.length})`}
+                ? 'Generating drafts…'
+                : `Generate drafts (${itemsToProcess.length})`}
             </button>
             {generating && <span className={styles.working}>This can take a while — AI rewrite{generateImage ? ' + image' : ''} per article.</span>}
           </div>
