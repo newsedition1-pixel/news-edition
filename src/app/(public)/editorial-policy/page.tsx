@@ -84,7 +84,8 @@ export default function EditorialPolicyPage() {
         <div className={styles.body}>
           <p>
             If you find a factual error, please tell us. See our <Link href="/corrections">Corrections page</Link>{' '}
-            for how to report it and what we do next.
+            for how to report it and what we do next. For a complaint about content, see the{' '}
+            <Link href="/grievance">Grievance Officer page</Link>.
           </p>
         </div>
       </div>
