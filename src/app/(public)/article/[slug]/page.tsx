@@ -10,7 +10,7 @@ import { ArticleCard } from '@/components/news/ArticleCard'
 import { NewsletterSignup } from '@/components/news/NewsletterSignup'
 import { formatDate } from '@/lib/utils'
 import {
-  siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, authorPath,
+  siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, authorPath, authorRoleLabel, clip,
   articleTitleField, articleDescription, newsArticleJsonLd, breadcrumbJsonLd, wasUpdated,
 } from '@/lib/seo'
 import styles from './page.module.scss'
@@ -35,6 +35,7 @@ async function getArticle(slug: string) {
     categoryId: categories.id, categoryName: categories.name,
     categorySlug: categories.slug, categoryColor: categories.color,
     authorId: users.id, authorName: users.name, authorImage: users.image,
+    authorBio: users.bio, authorRole: users.role,
   })
     .from(articles)
     .leftJoin(categories, eq(articles.categoryId, categories.id))
@@ -258,6 +259,28 @@ export default async function ArticlePage({ params }: Props) {
             className={`article-content ${styles.content}`}
             dangerouslySetInnerHTML={{ __html: article.content }}
           />
+
+          {/* Author box: who published this, with a link to the full profile */}
+          {article.author && (
+            <aside className={styles.authorBox} aria-label={row.isAiGenerated ? 'Published by' : 'About the author'}>
+              <div className={styles.authorAvatar}>
+                {article.author.image ? (
+                  <Image src={article.author.image} alt={cleanName(article.author.name)} width={40} height={40} />
+                ) : article.author.name.charAt(0)}
+              </div>
+              <div className={styles.authorBoxText}>
+                <p className={styles.authorBoxLabel}>{row.isAiGenerated ? 'Published by' : 'About the author'}</p>
+                <Link href={authorPath(article.author)} className={styles.authorBoxName}>
+                  {cleanName(article.author.name)}
+                </Link>
+                <span className={styles.authorBoxRole}>{authorRoleLabel(row.authorRole)}</span>
+                {row.authorBio && <p className={styles.authorBoxBio}>{clip(row.authorBio, 240)}</p>}
+                <Link href={authorPath(article.author)} className={styles.authorBoxMore}>
+                  More articles by {cleanName(article.author.name)}
+                </Link>
+              </div>
+            </aside>
+          )}
 
           {/* Tags */}
           {article.tags && article.tags.length > 0 && (

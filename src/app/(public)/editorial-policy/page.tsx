@@ -69,6 +69,10 @@ export default function EditorialPolicyPage() {
             necessarily reviewed this way.
           </p>
           <p>
+            AI-assisted articles name the publisher that reported the story and end with a &quot;Source&quot;
+            link to it. Earlier AI-assisted articles may not have this line.
+          </p>
+          <p>
             Articles produced with AI carry a visible note on the article page, so readers can tell them
             apart from articles written without AI.
           </p>

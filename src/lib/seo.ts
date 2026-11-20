@@ -56,6 +56,11 @@ export function authorPath(author: { id: string; name: string }): string {
   return `/author/${author.id}/${slugify(author.name)}`
 }
 
+/** Public job title for an author, from the account role. Used on the article author box and the author page. */
+export function authorRoleLabel(role: string | null | undefined): string {
+  return role === 'owner' ? 'Editor-in-Chief' : role === 'admin' ? 'Editor' : 'Contributor'
+}
+
 /** Category <title>: avoids "Haryana News News" when the category name already ends in "News". */
 export function categoryTitle(name: string, page = 1): string {
   const base = /\bnews$/i.test(name.trim()) ? `${name.trim()} Today` : `${name.trim()} News Today`
