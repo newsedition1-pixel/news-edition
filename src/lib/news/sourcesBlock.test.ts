@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { splitSources, wrapSources } from './sourcesBlock'
+import { splitSources, unlinkPublisherLinks, wrapSources } from './sourcesBlock'
 
 const body = '<p>The court ruled on Friday.</p>\n<h2>What next</h2>\n<p>Both sides will respond.</p>'
 const further = '<h2>Further reading</h2><ul><li><a href="https://a.example/x">A: story</a></li></ul>'
@@ -40,4 +40,11 @@ test('text that merely mentions a source is left alone', () => {
   const html = '<p>According to the report <strong>Source:</strong> inline in a longer paragraph.</p>\n<p>More text follows.</p>'
   assert.deepEqual(splitSources(html), { body: html, sources: '' })
   assert.deepEqual(splitSources(body), { body, sources: '' })
+})
+
+test('links to publishers inside the text become plain text; other links stay', () => {
+  const html = '<p>According to <a href="https://www.thehindu.com/a.ece" target="_blank" rel="noopener noreferrer">The Hindu</a>, rates held. See <a href="/article/repo-rate">our explainer</a> and <a href=\'https://www.rbi.org.in/x\'>the RBI note</a>.</p>'
+  const out = unlinkPublisherLinks(html)
+  assert.equal(out, '<p>According to The Hindu, rates held. See <a href="/article/repo-rate">our explainer</a> and <a href=\'https://www.rbi.org.in/x\'>the RBI note</a>.</p>')
+  assert.equal(unlinkPublisherLinks('<p>No links here.</p>'), '<p>No links here.</p>')
 })

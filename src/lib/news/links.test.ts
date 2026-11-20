@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { assembleArticleHtml, furtherReadingBlock, insertInternalLinks, linkSourceMentions, primaryDocumentLinks, relatedArticlesBlock, type InternalCandidate } from './links'
+import { assembleArticleHtml, furtherReadingBlock, insertInternalLinks, primaryDocumentLinks, relatedArticlesBlock, type InternalCandidate } from './links'
 
 const cands: InternalCandidate[] = [
   { title: 'How repo rate changes move your EMI', slug: 'repo-rate-emi', tags: ['repo rate', 'home loan emi'] },
@@ -20,18 +20,6 @@ test('internal links go on the first natural mention, never in the opening parag
 test('existing anchors are not nested or altered', () => {
   const html = '<p>Intro.</p><p>See <a href="https://x.example">the repo rate note</a> for more.</p>'
   assert.equal(insertInternalLinks(html, cands, 3).html, html)
-})
-
-test('publisher mentions link once to the publisher report', () => {
-  const html = '<p>According to The Hindu, rates held. The Hindu also noted inflation.</p>'
-  const out = linkSourceMentions(html, [{ name: 'The Hindu', url: 'https://www.thehindu.com/a.ece' }])
-  assert.equal((out.match(/<a /g) || []).length, 1)
-  assert.ok(out.includes('rel="noopener noreferrer">The Hindu</a>'))
-})
-
-test('unsafe URLs are never linked', () => {
-  const html = '<p>According to The Hindu, rates held.</p>'
-  assert.equal(linkSourceMentions(html, [{ name: 'The Hindu', url: 'javascript:alert(1)' }]), html)
 })
 
 test('related and further-reading blocks escape text and skip empty input', () => {
@@ -70,5 +58,21 @@ test('assembled article ends with credit and the standard Source line, and count
   assert.ok(out.html.indexOf('article-sources') > out.html.indexOf('Borrowers watch'))
   assert.ok(out.html.indexOf('Cover image') < out.html.indexOf('Source:'))
   assert.ok(out.internalLinks >= 1)
-  assert.ok(out.externalLinks >= 3)
+  // Further reading + the Source line; the publisher's name in the text is not a link.
+  assert.ok(out.externalLinks >= 2)
+})
+
+test('no link to a publisher appears in the text before the sources block', () => {
+  const body = '<p>According to The Hindu, the repo rate was held. The Hindu also noted inflation.</p><p>Indian Express reported the same.</p>'
+  const out = assembleArticleHtml({
+    bodyHtml: body,
+    internal: [],
+    primary: { name: 'The Hindu', url: 'https://www.thehindu.com/a.ece' },
+    others: [{ name: 'Indian Express', url: 'https://indianexpress.com/b', title: 'Rate held' }],
+    documents: [],
+  })
+  const before = out.html.slice(0, out.html.indexOf('<div class="article-sources">'))
+  assert.ok(before.includes('According to The Hindu, the repo rate was held.'))
+  assert.equal((before.match(/<a /g) || []).length, 0)
+  assert.ok(out.html.slice(before.length).includes('thehindu.com/a.ece'))
 })

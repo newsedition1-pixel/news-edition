@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classifyStory, deskForSlug, lastActivity, normalizeName, pickAuthorId, rotationOrder, DESKS, SCHEDULE_SLUGS } from './desks'
+import { alternativeCategories, categoryScores, classifyStory, deskForSlug, lastActivity, normalizeName, pickAuthorId, rotationOrder, DESKS, SCHEDULE_SLUGS } from './desks'
 
 test('every scheduled category has exactly one desk', () => {
   for (const slug of SCHEDULE_SLUGS) assert.ok(deskForSlug(slug), slug)
@@ -66,4 +66,20 @@ test('a category that was only tried goes behind the ones that were not', () => 
   assert.deepEqual(last, { india: 100, business: null, world: 50, state: 500 })
   // business was never tried: first. Then world (50), india (100), and state (just tried) last.
   assert.deepEqual(rotationOrder(last), ['business', 'world', 'india', 'state'])
+})
+
+const HARYANA_STORY = { title: 'Gurugram residents protest as waterlogging returns', summary: 'The Haryana government has asked the district collector for a report.' }
+
+test('categoryScores ranks every category with a keyword hit, best first', () => {
+  const scores = categoryScores(HARYANA_STORY)
+  assert.deepEqual(scores.map((x) => x.slug), ['haryana-news', 'state', 'governance'])
+  assert.ok(scores.every((x) => x.score > 0))
+  assert.deepEqual(categoryScores({ title: 'Quiet morning', summary: '' }), [])
+})
+
+test('alternativeCategories lists the other fitting categories, never the chosen one', () => {
+  assert.equal(classifyStory(HARYANA_STORY), 'haryana-news')
+  assert.deepEqual(alternativeCategories(HARYANA_STORY), ['state', 'governance'])
+  assert.deepEqual(alternativeCategories(HARYANA_STORY, 1), ['state'])
+  assert.deepEqual(alternativeCategories({ title: 'Quiet morning' }), [])
 })

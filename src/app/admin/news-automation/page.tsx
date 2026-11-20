@@ -5,6 +5,8 @@ import { getScheduleStatus } from '@/lib/news/scheduler'
 import { NewsAutomation } from './NewsAutomation'
 import { ScheduleCard } from './ScheduleCard'
 import { SocialCard } from './SocialCard'
+import { CoverageCard } from './CoverageCard'
+import { getCoverageStatus } from '@/lib/news/coverage'
 import { getSocialStatus } from '@/lib/social/share'
 import styles from './page.module.scss'
 
@@ -12,7 +14,7 @@ export const metadata: Metadata = { title: 'News Automation' }
 
 export default async function NewsAutomationPage() {
   await requireAdmin()
-  const [defaultWordLength, defaultAutoPublish, schedule, social] = await Promise.all([getNewsWordLength(), getNewsAutoPublish(), getScheduleStatus(), getSocialStatus()])
+  const [defaultWordLength, defaultAutoPublish, schedule, social, coverage] = await Promise.all([getNewsWordLength(), getNewsAutoPublish(), getScheduleStatus(), getSocialStatus(), getCoverageStatus()])
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -22,6 +24,7 @@ export default async function NewsAutomationPage() {
         </p>
       </div>
       <ScheduleCard initial={schedule} />
+      <CoverageCard rows={coverage} />
       <SocialCard initial={social} />
       <NewsAutomation defaultWordLength={defaultWordLength} defaultAutoPublish={defaultAutoPublish} />
     </div>
