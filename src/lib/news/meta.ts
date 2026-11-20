@@ -53,7 +53,10 @@ export function slugFromTitle(title: string, max = 80): string {
   return (dash > max * 0.6 ? cut.slice(0, dash) : base.slice(0, max)).replace(/-+$/, '')
 }
 
-const WEAK_WORDS = new Set(['india', 'indian', 'indians', 'government', 'minister', 'ministry', 'state', 'states', 'court', 'police', 'party', 'news', 'says', 'over', 'amid', 'after', 'with', 'from', 'that', 'this', 'will', 'have', 'been', 'their', 'more', 'than', 'govt', 'delhi', 'centre', 'union', 'crore', 'lakh'])
+const WEAK_WORDS = new Set(['india', 'indian', 'indians', 'government', 'minister', 'ministry', 'state', 'states', 'court', 'police', 'party', 'news', 'says', 'over', 'amid', 'after', 'with', 'from', 'that', 'this', 'will', 'have', 'been', 'their', 'more', 'than', 'govt', 'delhi', 'centre', 'union', 'crore', 'lakh', 'politics', 'political', 'governance', 'business', 'entertainment', 'world', 'latest', 'update', 'updates', 'report', 'reports', 'management', 'authority', 'board', 'commission', 'committee', 'scheme', 'policy'])
+
+/** One shared word is usually a section label or a place name; two is a shared topic. */
+const MIN_SHARED_WORDS = 2
 
 export interface PublishedRow extends InternalCandidate {
   categoryId: number | null
@@ -78,7 +81,7 @@ export function rankInternalCandidates(
       const score = shared * 2 + (subject.categoryId !== null && r.categoryId === subject.categoryId ? 1 : 0)
       return { r, shared, score }
     })
-    .filter((x) => x.shared >= 1)
+    .filter((x) => x.shared >= MIN_SHARED_WORDS)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
   return scored.map((x) => ({ title: x.r.title, slug: x.r.slug, tags: x.r.tags }))
