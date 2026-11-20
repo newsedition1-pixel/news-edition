@@ -1,0 +1,43 @@
+name: News schedule
+
+# Publishes one article every 30 minutes by calling the site's /api/cron/news route.
+# (Vercel Hobby cron only runs once a day, so GitHub Actions does the timing.)
+# Needs the repository secret CRON_SECRET, the same value as the CRON_SECRET env var on Vercel.
+# Pause or resume from Admin > News Automation, or run once by hand from the Actions tab.
+# Note: GitHub can start scheduled runs a few minutes late, and switches schedules off after
+# 60 days without any repository activity.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Ignore the 20-minute "ran recently" guard'
+        type: boolean
+        default: false
+
+concurrency:
+  group: news-schedule
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Publish the next article
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FORCE: ${{ inputs.force && '1' || '0' }}
+        run: |
+          set -u
+          if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET secret is not set"; exit 1; fi
+          code=$(curl -sS -o response.json -w '%{http_code}' --max-time 295 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "https://newsedition.in/api/cron/news?force=$FORCE")
+          cat response.json
+          echo
+          test "$code" = "200"

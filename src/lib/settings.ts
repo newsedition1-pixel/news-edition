@@ -7,6 +7,9 @@ export const NEWS_WORD_LENGTH_KEY = 'newsWordLength'
 export const NEWS_AUTO_PUBLISH_KEY = 'newsAutoPublish'
 /** Owner decision (20 Nov 2026): articles that pass every check are published without waiting for an editor. */
 export const DEFAULT_NEWS_AUTO_PUBLISH = true
+export const NEWS_SCHEDULE_KEY = 'newsScheduleEnabled'
+/** Owner decision (20 Nov 2026): one article every 30 minutes, started by the scheduled GitHub workflow. */
+export const DEFAULT_NEWS_SCHEDULE_ENABLED = true
 export const DEFAULT_NEWS_WORD_LENGTH = 800
 export const MIN_NEWS_WORD_LENGTH = 600
 export const MAX_NEWS_WORD_LENGTH = 4000
@@ -40,4 +43,10 @@ export async function getNewsWordLength(): Promise<number> {
 export async function getNewsAutoPublish(): Promise<boolean> {
   const stored = await getSetting(NEWS_AUTO_PUBLISH_KEY)
   return stored === null ? DEFAULT_NEWS_AUTO_PUBLISH : stored === 'true'
+}
+
+/** Whether the 30-minute schedule may publish (the admin can pause it from the News Automation screen). */
+export async function getNewsScheduleEnabled(): Promise<boolean> {
+  const stored = await getSetting(NEWS_SCHEDULE_KEY)
+  return stored === null ? DEFAULT_NEWS_SCHEDULE_ENABLED : stored === 'true'
 }

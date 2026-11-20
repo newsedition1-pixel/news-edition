@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/dal'
-import { db } from '@/lib/db'
-import { articles } from '@/lib/db/schema'
-import { desc, inArray } from 'drizzle-orm'
 import { discoverStories } from '@/lib/news/feeds'
-import { titleSimilarity, SAME_STORY_THRESHOLD } from '@/lib/news/cluster'
+import { dropCoveredStories } from '@/lib/news/fresh'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -29,16 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Skip stories we already have: any of the story's report URLs already saved, or a near-identical headline.
-    const urls = stories.flatMap((s) => s.items.map((i) => i.link))
-    const savedByUrl = urls.length
-      ? await db.select({ sourceUrl: articles.sourceUrl }).from(articles).where(inArray(articles.sourceUrl, urls))
-      : []
-    const seenUrls = new Set(savedByUrl.map((r) => r.sourceUrl))
-    const recent = await db.select({ title: articles.title }).from(articles).orderBy(desc(articles.createdAt)).limit(400)
-
-    const fresh = stories.filter(
-      (s) => !s.items.some((i) => seenUrls.has(i.link)) && !recent.some((r) => titleSimilarity(r.title, s.lead.title) >= SAME_STORY_THRESHOLD)
-    )
+    const fresh = await dropCoveredStories(stories)
     if (fresh.length === 0) {
       return NextResponse.json({ candidates: [], message: 'All matching stories have already been covered. Try a different hint.', failedPublishers })
     }
