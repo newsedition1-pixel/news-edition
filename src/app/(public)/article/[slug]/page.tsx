@@ -9,6 +9,7 @@ import { ShareButtons } from '@/components/news/ShareButtons'
 import { ArticleCard } from '@/components/news/ArticleCard'
 import { NewsletterSignup } from '@/components/news/NewsletterSignup'
 import { formatDate } from '@/lib/utils'
+import { splitSources } from '@/lib/news/sourcesBlock'
 import {
   siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, authorPath, authorRoleLabel, clip,
   articleTitleField, articleDescription, newsArticleJsonLd, breadcrumbJsonLd, wasUpdated,
@@ -155,6 +156,8 @@ export default async function ArticlePage({ params }: Props) {
   })
 
   const faqs = article.faqs ?? []
+  // Sources and image credit are shown small, at the very bottom of the page.
+  const { body: contentHtml, sources: sourcesHtml } = splitSources(article.content)
   const faqLd = faqs.length > 0 ? {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -250,7 +253,7 @@ export default async function ArticlePage({ params }: Props) {
           {/* Content */}
           <div
             className={`article-content ${styles.content}`}
-            dangerouslySetInnerHTML={{ __html: article.content }}
+            dangerouslySetInnerHTML={{ __html: contentHtml }}
           />
 
           {/* Author box: who published this, with a link to the full profile */}
@@ -307,6 +310,14 @@ export default async function ArticlePage({ params }: Props) {
           <div className={styles.newsletterWrap}>
             <NewsletterSignup />
           </div>
+
+          {sourcesHtml && (
+            <aside
+              className={styles.sources}
+              aria-label="Sources and image credits"
+              dangerouslySetInnerHTML={{ __html: sourcesHtml }}
+            />
+          )}
         </article>
 
         <aside className={styles.sidebar} aria-label="Article sidebar">

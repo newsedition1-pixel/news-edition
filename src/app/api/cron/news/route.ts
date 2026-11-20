@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runScheduledArticle } from '@/lib/news/scheduler'
+import { bearerToken, secretMatches } from '@/lib/news/cronAuth'
 import { GITHUB_JWKS_URL, tokenKeyId, verifyGithubOidc, type Jwks, type OidcPolicy } from '@/lib/news/githubOidc'
 
 export const runtime = 'nodejs'
@@ -34,9 +35,10 @@ async function loadJwks(force: boolean): Promise<Jwks | null> {
 }
 
 async function authorise(request: NextRequest): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const header = request.headers.get('authorization') ?? ''
-  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
+  const token = bearerToken(request.headers.get('authorization'))
   if (!token) return { ok: false, reason: 'missing token' }
+  // An outside cron service (used when GitHub's timer is late) sends the shared secret.
+  if (secretMatches(token, process.env.CRON_SECRET)) return { ok: true }
   let jwks = await loadJwks(false)
   if (!jwks) return { ok: false, reason: 'could not load GitHub signing keys' }
   // GitHub rotates keys now and then: if this token's key is not in the cached set, fetch a fresh one once.
@@ -47,8 +49,10 @@ async function authorise(request: NextRequest): Promise<{ ok: true } | { ok: fal
 
 /**
  * Called every 30 minutes by the GitHub Actions workflow `news-schedule.yml` (Vercel Hobby cron
- * only runs daily). The workflow proves who it is with GitHub's OIDC token, so no shared secret
- * has to be stored anywhere. Publishes at most one article. `?force=1` skips the "ran recently"
+ * only runs daily). The workflow proves who it is with GitHub's OIDC token. As a second way in, an
+ * outside cron service may send `Authorization: Bearer <CRON_SECRET>` (only when that environment
+ * variable is set). Publishes at most one article; a run within 20 minutes of the last one does
+ * nothing, so two callers cannot double up. `?force=1` skips the "ran recently"
  * guard. Anything other than a clean run returns 200 with a status; only real errors return 5xx.
  */
 export async function GET(request: NextRequest) {
