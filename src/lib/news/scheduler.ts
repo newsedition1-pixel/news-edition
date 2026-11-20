@@ -6,9 +6,11 @@ import { discoverStories } from './feeds'
 import { dropCoveredStories } from './fresh'
 import { buildArticleFromStory, SkipStory, type StoryRef } from './pipeline'
 import { saveBuiltArticle } from './publish'
-import { classifyStory, DESKS, lastActivity, pickAuthorId, rotationOrder, SCHEDULE_SLUGS } from './desks'
+import { alternativeCategories, classifyStory, DESKS, lastActivity, pickAuthorId, rotationOrder, SCHEDULE_SLUGS } from './desks'
+import { categoryCounts24h } from './coverage'
 import { getNewsAutoPublish, getNewsScheduleEnabled, getNewsWordLength, getSetting, setSetting, NEWS_SCHEDULE_FAILED_KEY, NEWS_SCHEDULE_TRIED_KEY } from '@/lib/settings'
 import { addFailed, hasFailed, parseFailed } from './failed'
+import { expireBreaking } from './placementDb'
 import type { Story } from './cluster'
 
 /** Two runs closer together than this are treated as one (GitHub can fire a late run right behind the next). */
@@ -88,6 +90,12 @@ export interface ScheduleOutcome {
   attempts: { title: string; category: string; result: string }[]
 }
 
+/** " (featured, breaking)" for the log line, or nothing. */
+function placementLabel(p: { featured: boolean; breaking: boolean }): string {
+  const tags = [p.breaking ? 'breaking' : '', p.featured ? 'featured' : ''].filter(Boolean)
+  return tags.length ? ` (${tags.join(', ')})` : ''
+}
+
 function toStoryRef(s: Story): StoryRef {
   return { title: s.lead.title, sources: s.publishers.map((p) => ({ name: p.name, url: p.url, title: p.title })), trendTerm: s.trendMatch }
 }
@@ -102,6 +110,9 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
   const out: ScheduleOutcome = { status: 'skipped', message: '', notices: [], attempts: [] }
 
   if (!(await getNewsScheduleEnabled())) return { ...out, status: 'disabled', message: 'The schedule is paused in Admin → News Automation.' }
+
+  // Breaking is for the first hours only: take the flag off AI articles that are older than that.
+  await expireBreaking().catch((err) => console.error('Expire breaking failed:', err))
 
   if (!opts.force) {
     const [recent] = await db
@@ -155,10 +166,17 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
   if (fresh.length === 0) return { ...out, message: 'Every current story has already been covered.' }
 
   const byCategory = new Map<string, Story[]>()
+  const alternatives = new Map<Story, string[]>()
   for (const s of fresh) {
-    const slug = classifyStory({ title: s.lead.title, summary: s.lead.summary, publisherKeys: s.publishers.map((p) => p.key) })
+    const text = { title: s.lead.title, summary: s.lead.summary, publisherKeys: s.publishers.map((p) => p.key) }
+    const slug = classifyStory(text)
     byCategory.set(slug, [...(byCategory.get(slug) ?? []), s])
+    alternatives.set(s, alternativeCategories(text))
   }
+  // Every category should get an article every day: one with none in the last 24 hours may also take a
+  // story that fits it second best, when it has too few stories of its own.
+  const counts = await categoryCounts24h([...usable.keys()]).catch(() => ({}) as Record<string, number>)
+  const overdue = new Set([...usable.keys()].filter((slug) => counts[slug] === 0))
 
   const [wordLength, autoPublish] = await Promise.all([getNewsWordLength(), getNewsAutoPublish()])
 
@@ -171,7 +189,9 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
   for (const slug of order) {
     const target = usable.get(slug)
     if (!target) continue
-    const pool = (byCategory.get(slug) ?? []).filter((s) => !hasFailed(failed, s.publishers.map((p) => p.url)))
+    const own = byCategory.get(slug) ?? []
+    const borrowed = overdue.has(slug) ? fresh.filter((s) => !own.includes(s) && alternatives.get(s)?.includes(slug)) : []
+    const pool = [...own, ...borrowed].filter((s) => !hasFailed(failed, s.publishers.map((p) => p.url)))
     if (pool.length === 0) continue
 
     triedNow = addFailed(triedNow, [slug], Date.now())
@@ -200,12 +220,12 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
           imageMode: 'licensed_first',
           uploadedBy: target.authorId,
         })
-        const saved = await saveBuiltArticle(built, target.authorId, autoPublish, { strength: story.publisherCount + (story.trendMatch ? 1 : 0) })
+        const saved = await saveBuiltArticle(built, target.authorId, autoPublish, { strength: story.publisherCount + (story.trendMatch ? 1 : 0), publishers: story.publisherCount })
         attempt.result = saved.published ? 'published' : `draft (${saved.holdReason ?? 'auto-publish is off'})`
         return {
           ...out,
           status: saved.published ? 'published' : 'draft',
-          message: saved.published ? 'Published.' : `Saved as a draft: ${saved.holdReason ?? 'auto-publish is off'}.`,
+          message: saved.published ? `Published${placementLabel(saved.placement)}.` : `Saved as a draft: ${saved.holdReason ?? 'auto-publish is off'}.`,
           category: target.name,
           author: target.authorName,
           title: saved.title,

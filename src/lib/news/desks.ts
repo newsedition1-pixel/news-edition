@@ -95,33 +95,47 @@ export interface StoryText {
 
 const WORLD_ONLY_PUBLISHERS = new Set(['bbc', 'al-jazeera'])
 
-/**
- * Which category a story belongs to, by keywords in its headline (counted double) and summary.
- * Stories with no keyword hit go to India, except that BBC / Al Jazeera-only stories go to World.
- */
-export function classifyStory(story: StoryText): string {
+/** Every category with a keyword hit, best first (headline hits count double); ties go by `PRIORITY`. */
+export function categoryScores(story: StoryText): { slug: string; score: number }[] {
   const title = story.title ?? ''
   const summary = story.summary ?? ''
-  let best: string | null = null
-  let bestScore = 0
-  for (const slug of PRIORITY) {
+  return PRIORITY.map((slug, order) => {
     let score = 0
     for (const rx of RULES[slug] ?? []) {
       const g = new RegExp(rx.source, 'gi')
       score += (title.match(g)?.length ?? 0) * 2 + (summary.match(g)?.length ?? 0)
     }
-    if (score > bestScore) {
-      best = slug
-      bestScore = score
-    }
-  }
+    return { slug, score, order }
+  })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .map(({ slug, score }) => ({ slug, score }))
+}
+
+/**
+ * Which category a story belongs to, by keywords in its headline (counted double) and summary.
+ * Stories with no keyword hit go to India, except that BBC / Al Jazeera-only stories go to World.
+ */
+export function classifyStory(story: StoryText): string {
+  const best = categoryScores(story)[0]?.slug ?? null
   const keys = story.publisherKeys ?? []
-  if (!best || bestScore === 0) {
-    return keys.length > 0 && keys.every((k) => WORLD_ONLY_PUBLISHERS.has(k)) ? 'world' : 'india'
-  }
+  const foreignOnly = keys.length > 0 && keys.every((k) => WORLD_ONLY_PUBLISHERS.has(k))
+  if (!best) return foreignOnly ? 'world' : 'india'
   // A foreign-only story that merely mentions "market" or "minister" is still a world story.
-  if (keys.length > 0 && keys.every((k) => WORLD_ONLY_PUBLISHERS.has(k)) && best !== 'entertainment') return 'world'
+  if (foreignOnly && best !== 'entertainment') return 'world'
   return best
+}
+
+/**
+ * Other categories a story also fits (a keyword hit, but not the best one), best first. Used only to
+ * fill a category that has had no article for a day: the story is then published there instead.
+ */
+export function alternativeCategories(story: StoryText, limit = 2): string[] {
+  const chosen = classifyStory(story)
+  return categoryScores(story)
+    .map((x) => x.slug)
+    .filter((slug) => slug !== chosen)
+    .slice(0, limit)
 }
 
 /**

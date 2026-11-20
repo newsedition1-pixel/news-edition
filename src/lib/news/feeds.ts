@@ -29,6 +29,8 @@ async function fetchText(url: string, timeoutMs: number): Promise<{ text: string
 
 async function loadPublisherFeeds(p: Publisher): Promise<StoryItem[]> {
   const results = await Promise.all(p.feeds.map((f) => fetchText(f, 8000)))
+  const unloaded = p.feeds.filter((_, i) => !results[i])
+  if (unloaded.length > 0) console.warn(`Feed not loaded (${p.name}): ${unloaded.join(' ')}`)
   const items: StoryItem[] = []
   const seen = new Set<string>()
   for (const r of results) {

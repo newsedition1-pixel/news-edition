@@ -6,6 +6,8 @@ import { revalidatePath } from 'next/cache'
 import { notifyIndexing } from '@/lib/googleIndexing'
 import { shareArticle } from '@/lib/social/share'
 import { slugFromTitle } from './meta'
+import { decidePlacement, type Placement } from './placement'
+import { loadPlacementContext } from './placementDb'
 import type { BuiltArticle } from './pipeline'
 
 export interface SavedArticle {
@@ -15,6 +17,8 @@ export interface SavedArticle {
   published: boolean
   /** Why the article was kept as a draft although publishing was on, if it was. */
   holdReason: string | null
+  /** Whether the article was marked featured and/or breaking (chosen by rules, see placement.ts). */
+  placement: Placement
 }
 
 /**
@@ -26,8 +30,11 @@ export async function saveBuiltArticle(
   built: BuiltArticle,
   authorId: string,
   autoPublish: boolean,
-  /** `strength`: how many trusted publishers carried the story (+1 if trending); leave out for an editor's own run. */
-  opts: { strength?: number } = {},
+  /**
+   * `strength`: how many trusted publishers carried the story (+1 if trending); leave out for an editor's own run.
+   * `publishers`: how many trusted publishers carried it (falls back to the reports the article was written from).
+   */
+  opts: { strength?: number; publishers?: number } = {},
 ): Promise<SavedArticle> {
   const baseSlug = slugFromTitle(built.title)
   const taken = await db.select({ id: articles.id }).from(articles).where(eq(articles.slug, baseSlug)).limit(1)
@@ -36,6 +43,27 @@ export async function saveBuiltArticle(
   const holdReason = built.stats.holdReason
   const publish = autoPublish && !holdReason
   const now = new Date()
+
+  // Featured / breaking are chosen by rules (placement.ts); a draft gets neither.
+  let placement: Placement = { featured: false, breaking: false, reason: 'not published' }
+  if (publish) {
+    try {
+      placement = decidePlacement(
+        {
+          publishers: opts.publishers ?? built.stats.sourcesUsed.length,
+          title: built.title,
+          wordCount: built.stats.wordCount,
+          cover: built.stats.imageSource,
+          auditScore: null,
+        },
+        await loadPlacementContext(built.categoryId, now),
+      )
+    } catch (err) {
+      console.error('Placement error:', err)
+      placement = { featured: false, breaking: false, reason: 'placement failed' }
+    }
+  }
+
   const [article] = await db
     .insert(articles)
     .values({
@@ -55,6 +83,8 @@ export async function saveBuiltArticle(
       seoDescription: built.seoDescription || null,
       sourceUrl: built.sourceUrl,
       isAiGenerated: true,
+      isFeatured: placement.featured,
+      isBreaking: placement.breaking,
       publishedAt: publish ? now : null,
       createdAt: now,
       updatedAt: now,
@@ -62,6 +92,7 @@ export async function saveBuiltArticle(
     .returning()
 
   if (publish) {
+    console.log(`Placement: ${article.slug}: ${placement.reason}`)
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
     notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
     revalidatePath(`/article/${article.slug}`)
@@ -71,5 +102,5 @@ export async function saveBuiltArticle(
   }
   revalidatePath('/admin/articles')
 
-  return { id: article.id, slug: article.slug, title: article.title, published: publish, holdReason }
+  return { id: article.id, slug: article.slug, title: article.title, published: publish, holdReason, placement }
 }

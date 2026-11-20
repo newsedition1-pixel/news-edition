@@ -40,13 +40,23 @@ export const PUBLISHERS: Publisher[] = [
     key: 'indian-express',
     name: 'The Indian Express',
     hosts: ['indianexpress.com'],
-    feeds: ['https://indianexpress.com/feed/'],
+    feeds: [
+      'https://indianexpress.com/feed/',
+      // Local feed for the Haryana News category. Not loaded from the development environment (the site blocks it
+      // there): the runtime log line "Feed not loaded" shows whether it works in production.
+      'https://indianexpress.com/section/cities/chandigarh/feed/',
+    ],
   },
   {
     key: 'hindustan-times',
     name: 'Hindustan Times',
     hosts: ['hindustantimes.com'],
-    feeds: ['https://www.hindustantimes.com/feeds/rss/latest/rssfeed.xml'],
+    feeds: [
+      'https://www.hindustantimes.com/feeds/rss/latest/rssfeed.xml',
+      // Local feeds for the Haryana News category (same note as the Indian Express one: check the log line "Feed not loaded").
+      'https://www.hindustantimes.com/feeds/rss/cities/chandigarh-news/rssfeed.xml',
+      'https://www.hindustantimes.com/feeds/rss/cities/gurugram-news/rssfeed.xml',
+    ],
   },
   {
     key: 'ndtv',

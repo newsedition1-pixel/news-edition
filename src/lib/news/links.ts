@@ -81,27 +81,6 @@ export function insertInternalLinks(html: string, candidates: InternalCandidate[
   return { html: out, linked }
 }
 
-/** Links the first mention of each named publisher to that publisher's report. */
-export function linkSourceMentions(html: string, sources: ExternalSource[]): string {
-  let out = html
-  const done = new Set<string>()
-  for (const s of sources) {
-    const name = cleanSourceName(s.name)
-    const url = safeHttpUrl(s.url)
-    if (!name || !url || done.has(name.toLowerCase())) continue
-    let replacedAny = false
-    out = out.replace(/<p>([\s\S]*?)<\/p>/g, (full, inner: string) => {
-      if (replacedAny) return full
-      const replaced = linkFirstOccurrence(inner, name, (m) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${m}</a>`)
-      if (!replaced) return full
-      replacedAny = true
-      return `<p>${replaced}</p>`
-    })
-    if (replacedAny) done.add(name.toLowerCase())
-  }
-  return out
-}
-
 export function relatedArticlesBlock(candidates: InternalCandidate[], exclude: InternalCandidate[] = [], max = 3): string {
   const picks = candidates.filter((c) => !exclude.includes(c)).slice(0, max)
   if (picks.length === 0) return ''
@@ -166,20 +145,20 @@ export interface Assembled {
 }
 
 /**
- * Final article HTML: body with inline internal links and publisher links, then related reading,
- * then one sources block: further reading, the image credit and the standard "Source:" line
- * (the Reel automation reads that line).
+ * Final article HTML: body with inline internal links, then related reading, then one sources
+ * block: further reading, the image credit and the standard "Source:" line (the Reel automation
+ * reads that line). Publisher names stay plain text in the body ("according to The Hindu"); every
+ * link to a publisher lives in the sources block at the very end (owner decision, 21 Nov 2026).
  */
 export function assembleArticleHtml(input: AssembleInput): Assembled {
   const withInternal = insertInternalLinks(input.bodyHtml, input.internal, 3)
-  const withPublishers = linkSourceMentions(withInternal.html, [input.primary, ...input.others])
   const related = relatedArticlesBlock(input.internal, withInternal.linked, 3)
   const further = furtherReadingBlock(input.others, input.documents)
   const credit = input.imageCreditHtml ?? ''
   const sourceNote = buildSourceNote({ name: input.primary.name, url: input.primary.url })
   // Further reading, the image credit and the Source line go into one marked block at the very end;
   // the article page shows that block small, at the bottom of the page (see sourcesBlock.ts).
-  const html = [withPublishers.trimEnd(), related, wrapSources([further, credit, sourceNote])].filter(Boolean).join('\n')
+  const html = [withInternal.html.trimEnd(), related, wrapSources([further, credit, sourceNote])].filter(Boolean).join('\n')
 
   const count = (re: RegExp) => (html.match(re) || []).length
   return {

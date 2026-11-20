@@ -423,12 +423,13 @@
   padding: $space-8;
 }
 
-// Sources, further reading and image credit: small and last on the page, but still readable.
+// Sources, further reading and image credit: last on the page and very small (10px). Not smaller: tiny text
+// can be treated as hidden text by search engines, and image credits must stay legible for the licence.
 .sources {
   margin-top: $space-8;
   padding-top: $space-3;
   border-top: 1px solid var(--border);
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   line-height: 1.5;
   color: var(--text-muted);
 

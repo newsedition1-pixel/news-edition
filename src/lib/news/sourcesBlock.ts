@@ -4,6 +4,8 @@
  * bottom of the page. Pure and unit-tested.
  */
 
+import { isTrustedUrl } from './publishers'
+
 export const SOURCES_CLASS = 'article-sources'
 
 const OPEN = `<div class="${SOURCES_CLASS}">`
@@ -40,4 +42,15 @@ export function splitSources(html: string): { body: string; sources: string } {
     rest = rest.slice(0, m.index).trimEnd()
   }
   return found.length > 0 ? { body: rest, sources: found.join('\n') } : { body: html, sources: '' }
+}
+
+/**
+ * Articles written before 21 Nov 2026 link the first mention of each publisher inside the text.
+ * Sources belong at the end only, so those anchors are turned back into plain text when the page
+ * is shown (the same links are in the sources block). Only links to trusted publishers are touched.
+ */
+export function unlinkPublisherLinks(html: string): string {
+  return html.replace(/<a\b[^>]*?\bhref=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi, (full, _q: string, href: string, text: string) =>
+    isTrustedUrl(href.replace(/&amp;/g, '&')) ? text : full,
+  )
 }
