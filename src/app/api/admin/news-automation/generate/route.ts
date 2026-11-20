@@ -1,24 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/dal'
 import { db } from '@/lib/db'
-import { articles, assets, categories } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { articles, categories } from '@/lib/db/schema'
+import { eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { slugify, sanitizeFaqs } from '@/lib/utils'
-import { uploadToCloudinary } from '@/lib/cloudinary'
-import { fetchSourcePage } from '@/lib/news/sourcePage'
-import { rewriteArticle, generateCoverImage } from '@/lib/ai/openai'
-import { cleanSourceName, withSourceNote } from '@/lib/sources'
-import { clampWordLength, getNewsWordLength, setSetting, NEWS_WORD_LENGTH_KEY } from '@/lib/settings'
-import type { NewsCandidate } from '@/lib/news/googleNews'
+import { clampWordLength, getNewsAutoPublish, getNewsWordLength, setSetting, NEWS_AUTO_PUBLISH_KEY, NEWS_WORD_LENGTH_KEY } from '@/lib/settings'
+import { notifyIndexing } from '@/lib/googleIndexing'
+import { buildArticleFromStory, SkipStory, type ImageMode, type StoryRef } from '@/lib/news/pipeline'
+import { isTrustedUrl } from '@/lib/news/publishers'
+import { slugFromTitle } from '@/lib/news/meta'
+import { safeHttpUrl } from '@/lib/sources'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // seconds; Vercel caps this by plan — keep batches small.
 
-const MAX_ITEMS = 10
+const MAX_ITEMS = 6
+const CONCURRENCY = 2
+/** Stop starting new stories after this long so the response always returns before the platform timeout. */
+const START_BUDGET_MS = 230_000
 
 const MAX_FAQS = 20
-const DEFAULT_FAQS = 10
+const DEFAULT_FAQS = 6
 
 interface ItemResult {
   title: string
@@ -26,172 +28,173 @@ interface ItemResult {
   status: 'published' | 'draft' | 'skipped' | 'failed'
   id?: number
   slug?: string
-  imageSource?: 'source' | 'generated' | 'none'
+  imageSource?: 'commons' | 'publisher' | 'generated' | 'none'
   faqCount?: number
+  wordCount?: number
+  internalLinks?: number
+  externalLinks?: number
+  warnings?: string[]
   reason?: string
 }
 
-async function storeImage(src: string, uploadedBy: string) {
-  const result = await uploadToCloudinary(src, 'newsedition/articles')
-  await db.insert(assets).values({
-    name: `ai-news-${Date.now()}`,
-    url: result.secure_url,
-    publicId: result.public_id,
-    type: 'image',
-    format: result.format,
-    size: result.bytes,
-    width: result.width,
-    height: result.height,
-    uploadedBy,
-  })
-  return { url: result.secure_url, publicId: result.public_id, alt: '' }
+function parseStories(input: unknown): StoryRef[] {
+  if (!Array.isArray(input)) return []
+  const out: StoryRef[] = []
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object') continue
+    const r = raw as Record<string, unknown>
+    const title = typeof r.title === 'string' ? r.title.trim().slice(0, 300) : ''
+    const sources = Array.isArray(r.sources)
+      ? r.sources
+          .map((s) => {
+            const o = (s && typeof s === 'object' ? s : {}) as Record<string, unknown>
+            const url = safeHttpUrl(typeof o.url === 'string' ? o.url : null)
+            return url && isTrustedUrl(url)
+              ? { name: String(o.name ?? '').slice(0, 80), url, title: String(o.title ?? title).slice(0, 300) }
+              : null
+          })
+          .filter((s): s is { name: string; url: string; title: string } => !!s)
+          .slice(0, 6)
+      : []
+    if (!title || sources.length === 0) continue
+    out.push({ title, sources, trendTerm: typeof r.trendTerm === 'string' ? r.trendTerm.slice(0, 80) : null })
+  }
+  return out
+}
+
+function parseImageMode(body: Record<string, unknown>): ImageMode {
+  return body.imageMode === 'source_first' || body.imageMode === 'source' ? 'source_first' : 'licensed_first'
+}
+
+async function mapPool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(size, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++
+        out[i] = await fn(items[i])
+      }
+    })
+  )
+  return out
 }
 
 export async function POST(request: NextRequest) {
   try {
     const session = await requireAdmin()
-    const body = await request.json()
-    const items: NewsCandidate[] = Array.isArray(body?.items) ? body.items : []
+    const body = (await request.json()) as Record<string, unknown>
+    const stories = parseStories(body?.stories)
 
-    if (items.length === 0) return NextResponse.json({ error: 'No items to process' }, { status: 400 })
-    if (items.length > MAX_ITEMS) return NextResponse.json({ error: `Too many items (max ${MAX_ITEMS} per run)` }, { status: 400 })
+    if (stories.length === 0) return NextResponse.json({ error: 'No valid stories to process' }, { status: 400 })
+    if (stories.length > MAX_ITEMS) return NextResponse.json({ error: `Too many stories (max ${MAX_ITEMS} per run)` }, { status: 400 })
 
-    // Word length: use the admin's value if supplied and persist it as the new
-    // default; otherwise fall back to the stored default.
+    // Word length: use the admin's value if supplied and persist it as the new default.
     let wordLength: number
-    if (body?.wordLength !== undefined && body?.wordLength !== null && body?.wordLength !== '') {
+    if (body.wordLength !== undefined && body.wordLength !== null && body.wordLength !== '') {
       wordLength = clampWordLength(body.wordLength)
       await setSetting(NEWS_WORD_LENGTH_KEY, String(wordLength))
     } else {
       wordLength = await getNewsWordLength()
     }
 
-    // Per-run options (not persisted). Defaults chosen so a bare request is safe:
-    // no paid AI image, 10 FAQs.
-    const allowImageGen = body?.generateImage === true
-    const rawFaq = body?.faqCount
+    const imageMode = parseImageMode(body)
+
+    // Publish straight away (the owner's choice) or save drafts for an editor. The admin's choice is
+    // remembered. Even when publishing is on, an article that needs a human look is held as a draft.
+    let autoPublish: boolean
+    if (typeof body.autoPublish === 'boolean') {
+      autoPublish = body.autoPublish
+      await setSetting(NEWS_AUTO_PUBLISH_KEY, String(autoPublish))
+    } else {
+      autoPublish = await getNewsAutoPublish()
+    }
+    const rawFaq = body.faqCount
     const faqCount = rawFaq === undefined || rawFaq === null || rawFaq === ''
       ? DEFAULT_FAQS
       : Math.min(MAX_FAQS, Math.max(0, Math.round(Number(rawFaq)) || 0))
-    // Editorial review: AI-generated articles are ALWAYS saved as drafts. An editor reads and
-    // publishes each one from Admin → Articles. A `publishNow` flag in the request is ignored.
-    const targetStatus = 'draft' as const
 
-    const cats = await db.select({ id: categories.id, slug: categories.slug, name: categories.name }).from(categories).where(eq(categories.isActive, true))
-    const catBySlug = new Map(cats.map((c) => [c.slug, c.id]))
-    const categoryChoices = cats.map((c) => ({ slug: c.slug, name: c.name }))
+    const cats = await db
+      .select({ id: categories.id, slug: categories.slug, name: categories.name })
+      .from(categories)
+      .where(eq(categories.isActive, true))
 
-    const results: ItemResult[] = []
+    const startedAt = Date.now()
     let created = 0
 
-    for (const item of items) {
-      if (!item?.sourceUrl || !item?.title) {
-        results.push({ title: item?.title || '(unknown)', sourceUrl: item?.sourceUrl || '', status: 'failed', reason: 'Malformed item' })
-        continue
+    const results = await mapPool(stories, CONCURRENCY, async (story): Promise<ItemResult> => {
+      const leadUrl = story.sources[0].url
+      if (Date.now() - startedAt > START_BUDGET_MS) {
+        return { title: story.title, sourceUrl: leadUrl, status: 'skipped', reason: 'Run time limit reached; run this story again.' }
       }
-
       try {
-        // Re-check dedup at write time (guards against races between the
-        // candidate fetch and now); the unique index is the final backstop.
-        const dupe = await db.select({ id: articles.id }).from(articles).where(eq(articles.sourceUrl, item.sourceUrl)).limit(1)
-        if (dupe.length > 0) {
-          results.push({ title: item.title, sourceUrl: item.sourceUrl, status: 'skipped', reason: 'Already published' })
-          continue
-        }
+        // Re-check dedup at write time; the unique index on sourceUrl is the final backstop.
+        const urls = story.sources.map((s) => s.url)
+        const dupe = await db.select({ id: articles.id }).from(articles).where(inArray(articles.sourceUrl, urls)).limit(1)
+        if (dupe.length > 0) return { title: story.title, sourceUrl: leadUrl, status: 'skipped', reason: 'Already covered' }
 
-        const page = await fetchSourcePage(item.sourceUrl)
-        // Named source: the publisher the news feed reported (e.g. "The Hindu"). It is passed to
-        // the AI for attribution and also appended to the article as a visible "Source:" link.
-        const sourceName = cleanSourceName(item.source)
-        const rewritten = await rewriteArticle({
-          title: item.title,
-          snippet: item.snippet || '',
-          sourceDescription: page.description,
-          sourceName,
-          categories: categoryChoices,
-          wordLength,
-          faqCount,
-        })
+        const built = await buildArticleFromStory(story, { categories: cats, wordLength, faqCount, imageMode, uploadedBy: session.user.id })
 
-        // Image: always use a free source og:image when present. AI generation
-        // is opt-in (costs money), so only fall back to it when enabled.
-        let cover: { url: string; publicId: string } | null = null
-        let imageSource: ItemResult['imageSource'] = 'none'
-        if (page.imageUrl) {
-          try {
-            cover = await storeImage(page.imageUrl, session.user.id)
-            imageSource = 'source'
-          } catch {
-            cover = null
-          }
-        }
-        if (!cover && allowImageGen) {
-          try {
-            const dataUri = await generateCoverImage(rewritten.imagePrompt)
-            cover = await storeImage(dataUri, session.user.id)
-            imageSource = 'generated'
-          } catch {
-            cover = null
-            imageSource = 'none'
-          }
-        }
+        const baseSlug = slugFromTitle(built.title)
+        const taken = await db.select({ id: articles.id }).from(articles).where(eq(articles.slug, baseSlug)).limit(1)
+        const slug = taken.length > 0 ? `${baseSlug}-${Date.now().toString(36)}` : baseSlug
 
-        const faqs = sanitizeFaqs(rewritten.faqs)
-
-        // Unique slug (same approach as the manual create route).
-        let slug = slugify(rewritten.title)
-        const slugTaken = await db.select({ slug: articles.slug }).from(articles).where(eq(articles.slug, slug)).limit(1)
-        if (slugTaken.length > 0) slug = `${slug}-${Date.now()}`
-
+        const holdReason = built.stats.holdReason
+        const publish = autoPublish && !holdReason
         const now = new Date()
         const [article] = await db.insert(articles).values({
-          title: rewritten.title,
+          title: built.title,
           slug,
-          content: withSourceNote(rewritten.content, { name: sourceName, url: page.finalUrl || item.sourceUrl }),
-          excerpt: rewritten.excerpt || null,
-          coverImage: cover?.url || null,
-          coverImageAlt: rewritten.imageAlt || null,
-          coverImagePublicId: cover?.publicId || null,
-          categoryId: rewritten.categorySlug ? catBySlug.get(rewritten.categorySlug) ?? null : null,
+          content: built.content,
+          excerpt: built.excerpt || null,
+          coverImage: built.coverImage,
+          coverImageAlt: built.coverImageAlt,
+          coverImagePublicId: built.coverImagePublicId,
+          categoryId: built.categoryId,
           authorId: session.user.id,
-          status: targetStatus,
-          tags: rewritten.tags.length ? rewritten.tags : null,
-          faqs,
-          seoTitle: rewritten.seoTitle || null,
-          seoDescription: rewritten.seoDescription || null,
-          sourceUrl: item.sourceUrl,
+          status: publish ? 'published' : 'draft',
+          tags: built.tags.length ? built.tags : null,
+          faqs: built.faqs,
+          seoTitle: built.seoTitle || null,
+          seoDescription: built.seoDescription || null,
+          sourceUrl: built.sourceUrl,
           isAiGenerated: true,
-          publishedAt: null,
+          publishedAt: publish ? now : null,
           createdAt: now,
           updatedAt: now,
         }).returning()
 
         created++
-        results.push({
+        if (publish) {
+          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
+          notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
+          revalidatePath(`/article/${article.slug}`)
+          revalidatePath('/')
+        }
+        return {
           title: article.title,
-          sourceUrl: item.sourceUrl,
-          status: targetStatus,
+          sourceUrl: built.sourceUrl,
+          status: publish ? 'published' : 'draft',
           id: article.id,
           slug: article.slug,
-          imageSource,
-          faqCount: faqs?.length ?? 0,
-        })
+          imageSource: built.stats.imageSource,
+          faqCount: built.faqs?.length ?? 0,
+          wordCount: built.stats.wordCount,
+          internalLinks: built.stats.internalLinks,
+          externalLinks: built.stats.externalLinks,
+          warnings: built.stats.warnings,
+          reason: autoPublish && holdReason ? `Saved as a draft for an editor: ${holdReason}.` : undefined,
+        }
       } catch (err) {
-        console.error('Generate item error:', item.sourceUrl, err)
-        results.push({
-          title: item.title,
-          sourceUrl: item.sourceUrl,
-          status: 'failed',
-          reason: err instanceof Error ? err.message : 'Processing failed',
-        })
+        if (err instanceof SkipStory) return { title: story.title, sourceUrl: leadUrl, status: 'skipped', reason: err.message }
+        console.error('Generate story error:', leadUrl, err)
+        return { title: story.title, sourceUrl: leadUrl, status: 'failed', reason: err instanceof Error ? err.message : 'Processing failed' }
       }
-    }
+    })
 
-    if (created > 0) {
-      revalidatePath('/admin/articles')
-    }
+    if (created > 0) revalidatePath('/admin/articles')
 
-    return NextResponse.json({ created, total: items.length, results })
+    return NextResponse.json({ created, total: stories.length, results })
   } catch (error) {
     if (error && typeof error === 'object' && 'digest' in error && typeof error.digest === 'string' && error.digest.startsWith('NEXT_REDIRECT')) throw error
     console.error('News generate error:', error)

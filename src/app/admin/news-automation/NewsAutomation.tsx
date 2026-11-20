@@ -3,11 +3,16 @@ import { useMemo, useState } from 'react'
 import styles from './NewsAutomation.module.scss'
 
 interface Candidate {
-  sourceUrl: string
+  id: string
   title: string
   snippet: string
-  source: string | null
+  score: number
+  publisherCount: number
+  publishers: string[]
+  trendTerm: string | null
+  isExplainer: boolean
   publishedAt: string | null
+  sources: { name: string; url: string; title: string }[]
 }
 
 interface ItemResult {
@@ -16,37 +21,45 @@ interface ItemResult {
   status: 'published' | 'draft' | 'skipped' | 'failed'
   id?: number
   slug?: string
-  imageSource?: 'source' | 'generated' | 'none'
+  imageSource?: 'commons' | 'publisher' | 'generated' | 'none'
   faqCount?: number
+  wordCount?: number
+  internalLinks?: number
+  externalLinks?: number
+  warnings?: string[]
   reason?: string
 }
 
-const MAX_ITEMS = 10
-const MIN_WORDS = 100
+type ImageMode = 'licensed_first' | 'source_first'
+
+const MAX_ITEMS = 6
+const MIN_WORDS = 600
 const MAX_WORDS = 4000
 const MAX_FAQS = 20
 
-export function NewsAutomation({ defaultWordLength }: { defaultWordLength: number }) {
+export function NewsAutomation({ defaultWordLength, defaultAutoPublish }: { defaultWordLength: number; defaultAutoPublish: boolean }) {
   const [query, setQuery] = useState('')
   const [wordLength, setWordLength] = useState(defaultWordLength)
-  const [generateImage, setGenerateImage] = useState(false)
-  const [faqCount, setFaqCount] = useState(10)
+  const [imageMode, setImageMode] = useState<ImageMode>('licensed_first')
+  const [autoPublish, setAutoPublish] = useState(defaultAutoPublish)
+  const [faqCount, setFaqCount] = useState(6)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [randomize, setRandomize] = useState(false)
-  const [randomCount, setRandomCount] = useState(3)
+  const [autoPick, setAutoPick] = useState(false)
+  const [autoCount, setAutoCount] = useState(3)
 
   const [finding, setFinding] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<ItemResult[] | null>(null)
+  const [failedPublishers, setFailedPublishers] = useState<string[]>([])
 
-  const toggle = (url: string) => {
+  const toggle = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(url)) next.delete(url)
-      else next.add(url)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -66,6 +79,7 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error || 'Failed to fetch news'); return }
+      setFailedPublishers(Array.isArray(json.failedPublishers) ? json.failedPublishers : [])
       if (!json.candidates?.length) {
         setMessage(json.message || 'No news found for your preference.')
         return
@@ -78,13 +92,12 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
     }
   }
 
+  // Candidates arrive best-first (confirmed by the most publishers, freshest, trending), so
+  // "auto-pick" takes the top of the list.
   const itemsToProcess = useMemo(() => {
-    if (randomize) {
-      const shuffled = [...candidates].sort(() => Math.random() - 0.5)
-      return shuffled.slice(0, Math.min(randomCount, MAX_ITEMS))
-    }
-    return candidates.filter((c) => selected.has(c.sourceUrl)).slice(0, MAX_ITEMS)
-  }, [randomize, randomCount, candidates, selected])
+    if (autoPick) return candidates.slice(0, Math.min(autoCount, MAX_ITEMS))
+    return candidates.filter((c) => selected.has(c.id)).slice(0, MAX_ITEMS)
+  }, [autoPick, autoCount, candidates, selected])
 
   const generate = async () => {
     if (itemsToProcess.length === 0) return
@@ -95,14 +108,24 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
       const res = await fetch('/api/admin/news-automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToProcess, wordLength, generateImage, faqCount }),
+        body: JSON.stringify({
+          stories: itemsToProcess.map((c) => ({ title: c.title, sources: c.sources, trendTerm: c.trendTerm })),
+          wordLength,
+          imageMode,
+          autoPublish,
+          faqCount,
+        }),
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error || 'Failed to generate'); return }
       setResults(json.results || [])
-      // Drop successfully handled candidates from the list.
-      const done = new Set<string>((json.results as ItemResult[]).filter((r) => r.status !== 'failed').map((r) => r.sourceUrl))
-      setCandidates((prev) => prev.filter((c) => !done.has(c.sourceUrl)))
+      // Drop stories that now have a draft (or were already covered) from the list.
+      const done = new Set<string>(
+        (json.results as ItemResult[])
+          .filter((r) => r.status === 'published' || r.status === 'draft' || r.reason === 'Already covered')
+          .map((r) => r.sourceUrl)
+      )
+      setCandidates((prev) => prev.filter((c) => !c.sources.some((s) => done.has(s.url))))
       setSelected(new Set())
     } catch {
       setError('Failed to generate')
@@ -122,7 +145,7 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !finding) findNews() }}
-            placeholder="e.g. Indian startups, cricket, technology policy… (leave empty for top headlines)"
+            placeholder="e.g. RBI, cricket, Haryana, budget… (leave empty for the top stories)"
             className={styles.input}
             disabled={finding}
           />
@@ -148,22 +171,34 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
 
         <div className={styles.optionGrid}>
           <fieldset className={styles.option}>
-            <legend className={styles.optionLegend}>Cover image</legend>
+            <legend className={styles.optionLegend}>Cover image (never left empty)</legend>
             <label className={styles.radio}>
-              <input type="radio" name="imageMode" checked={!generateImage} onChange={() => setGenerateImage(false)} />
-              Don&apos;t generate (use source image if any)
+              <input type="radio" name="imageMode" checked={imageMode === 'licensed_first'} onChange={() => setImageMode('licensed_first')} />
+              Licensed Wikimedia photo first, else the publisher&apos;s news photo
             </label>
             <label className={styles.radio}>
-              <input type="radio" name="imageMode" checked={generateImage} onChange={() => setGenerateImage(true)} />
-              Generate with AI when source has none
+              <input type="radio" name="imageMode" checked={imageMode === 'source_first'} onChange={() => setImageMode('source_first')} />
+              The publisher&apos;s news photo first, else a licensed photo
             </label>
+            <p className={styles.radio}>
+              If neither exists, a labelled AI illustration is made. The NewsEdition logo is added to every cover.
+              Publisher photos are copyrighted; they are credited to the publisher.
+            </p>
           </fieldset>
 
           <fieldset className={styles.option}>
             <legend className={styles.optionLegend}>Publishing</legend>
+            <label className={styles.radio}>
+              <input type="radio" name="publishMode" checked={autoPublish} onChange={() => setAutoPublish(true)} />
+              Publish automatically when every check passes
+            </label>
+            <label className={styles.radio}>
+              <input type="radio" name="publishMode" checked={!autoPublish} onChange={() => setAutoPublish(false)} />
+              Save as draft for an editor
+            </label>
             <p className={styles.radio}>
-              Always saved as a draft. An editor reviews each article and publishes it from
-              Admin → Articles (look for the AI badge).
+              An article that needs a human look (for example names that are not in the sources) is always saved as a draft.
+              {' '}Your choice is remembered for the next run.
             </p>
           </fieldset>
 
@@ -183,49 +218,58 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
           </fieldset>
         </div>
 
-        <p className={styles.hintNote}>Source: Google News. Articles are AI-rewritten. Duplicates are skipped automatically. AI image generation costs money per image.</p>
+        <p className={styles.hintNote}>
+          Stories come from the public feeds of trusted publishers (The Hindu, Indian Express, Hindustan Times, NDTV, Times of India, Business Standard,
+          India Today, News18, Scroll, BBC, Al Jazeera). The AI works from the full text of up to three reports, never from a headline alone. An
+          article that fails the fact, copy or 600-word check is skipped, not saved. Duplicates are skipped automatically.
+        </p>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
       {message && <div className={styles.notice}>{message}</div>}
+      {failedPublishers.length > 0 && (
+        <div className={styles.notice}>Could not load right now: {failedPublishers.join(', ')}. The other publishers were used.</div>
+      )}
 
       {candidates.length > 0 && (
         <div className={styles.card}>
           <div className={styles.controls}>
             <label className={styles.checkLabel}>
-              <input type="checkbox" checked={randomize} onChange={(e) => setRandomize(e.target.checked)} />
-              Randomize — auto-pick
+              <input type="checkbox" checked={autoPick} onChange={(e) => setAutoPick(e.target.checked)} />
+              Auto-pick the top
               <input
                 type="number"
                 min={1}
                 max={Math.min(MAX_ITEMS, candidates.length)}
-                value={randomCount}
-                onChange={(e) => setRandomCount(Math.max(1, Number(e.target.value) || 1))}
+                value={autoCount}
+                onChange={(e) => setAutoCount(Math.max(1, Number(e.target.value) || 1))}
                 className={styles.countInput}
-                disabled={!randomize}
+                disabled={!autoPick}
               />
               of {candidates.length}
             </label>
             <span className={styles.selCount}>
-              {randomize ? `${Math.min(randomCount, candidates.length)} will be processed` : `${selected.size} selected`}
+              {autoPick ? `${Math.min(autoCount, candidates.length, MAX_ITEMS)} will be processed` : `${selected.size} selected (max ${MAX_ITEMS})`}
             </span>
           </div>
 
-          <ul className={`${styles.list} ${randomize ? styles.dim : ''}`}>
+          <ul className={`${styles.list} ${autoPick ? styles.dim : ''}`}>
             {candidates.map((c) => (
-              <li key={c.sourceUrl} className={styles.item}>
+              <li key={c.id} className={styles.item}>
                 <label className={styles.itemLabel}>
                   <input
                     type="checkbox"
-                    checked={selected.has(c.sourceUrl)}
-                    onChange={() => toggle(c.sourceUrl)}
-                    disabled={randomize}
+                    checked={selected.has(c.id)}
+                    onChange={() => toggle(c.id)}
+                    disabled={autoPick}
                   />
                   <span className={styles.itemBody}>
                     <span className={styles.itemTitle}>{c.title}</span>
                     {c.snippet && <span className={styles.itemSnippet}>{c.snippet}</span>}
                     <span className={styles.itemMeta}>
-                      {c.source && <span>{c.source}</span>}
+                      <span>{c.publisherCount > 1 ? `Confirmed by ${c.publisherCount} publishers: ${c.publishers.join(', ')}` : c.publishers[0]}</span>
+                      {c.trendTerm && <span>· Trending: {c.trendTerm}</span>}
+                      {c.isExplainer && <span>· Explainer</span>}
                       {c.publishedAt && <span>· {new Date(c.publishedAt).toLocaleString('en-IN')}</span>}
                     </span>
                   </span>
@@ -242,10 +286,10 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
               disabled={generating || itemsToProcess.length === 0}
             >
               {generating
-                ? 'Generating drafts…'
-                : `Generate drafts (${itemsToProcess.length})`}
+                ? (autoPublish ? 'Generating and publishing…' : 'Generating drafts…')
+                : `${autoPublish ? 'Generate and publish' : 'Generate drafts'} (${itemsToProcess.length})`}
             </button>
-            {generating && <span className={styles.working}>This can take a while — AI rewrite{generateImage ? ' + image' : ''} per article.</span>}
+            {generating && <span className={styles.working}>This takes a minute or two per article: reading the full reports, writing, fact-checking, finding an image.</span>}
           </div>
         </div>
       )}
@@ -266,8 +310,11 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
                 </span>
                 {(r.status === 'published' || r.status === 'draft') && (
                   <span className={styles.resImg}>
-                    image: {r.imageSource}{typeof r.faqCount === 'number' ? ` · ${r.faqCount} FAQs` : ''}
+                    {r.wordCount} words · {r.internalLinks ?? 0} internal / {r.externalLinks ?? 0} external links · {r.faqCount ?? 0} FAQs · image: {r.imageSource}
                   </span>
+                )}
+                {(r.status === 'published' || r.status === 'draft') && r.warnings && r.warnings.length > 0 && (
+                  <span className={styles.resReason}>Check: {r.warnings.join(' ')}</span>
                 )}
                 {r.reason && <span className={styles.resReason}>{r.reason}</span>}
               </li>

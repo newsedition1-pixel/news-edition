@@ -1,8 +1,13 @@
 import 'server-only'
-import { buildSystemPrompt, buildUserPrompt, type PromptInput } from './prompts'
+import { buildRetryPrompt, buildSystemPrompt, buildUserPrompt, type PromptInput } from './prompts'
 
 const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini'
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
+
+/** GPT-5 and o-series models reject temperature, presence_penalty and max_tokens, and spend part of the budget on reasoning. */
+export function isReasoningModel(model: string): boolean {
+  return /^(o\d|gpt-5)/i.test(model)
+}
 
 function apiKey(): string {
   const key = process.env.OPENAI_API_KEY
@@ -10,11 +15,12 @@ function apiKey(): string {
   return key
 }
 
-export type RewriteInput = PromptInput
+export type RewriteInput = PromptInput & { minWords: number }
 
 export interface RewrittenArticle {
   title: string
-  content: string // HTML
+  focusKeyword: string
+  content: string // HTML (untrusted until sanitised)
   excerpt: string
   tags: string[]
   seoTitle: string
@@ -22,25 +28,54 @@ export interface RewrittenArticle {
   categorySlug: string | null
   imageAlt: string
   imagePrompt: string
+  imageSubjects: string[]
   faqs: { question: string; answer: string }[]
 }
 
-async function chatJson(input: RewriteInput): Promise<RewrittenArticle> {
-  const userPrompt = buildUserPrompt(input)
+export interface RewriteRetry {
+  /** The raw JSON the model returned last time. */
+  previousRaw: string
+  issues: string[]
+}
 
+export interface RewriteResult {
+  article: RewrittenArticle
+  raw: string
+}
+
+function asStringArray(value: unknown, max: number): string[] {
+  return Array.isArray(value) ? value.map(String).map((s) => s.trim()).filter(Boolean).slice(0, max) : []
+}
+
+async function chatJson(input: RewriteInput, retry?: RewriteRetry): Promise<RewriteResult> {
+  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    { role: 'system', content: buildSystemPrompt(input.wordLength, input.faqCount, input.minWords) },
+    { role: 'user', content: buildUserPrompt(input) },
+  ]
+  if (retry) {
+    messages.push({ role: 'assistant', content: retry.previousRaw })
+    messages.push({ role: 'user', content: buildRetryPrompt(retry.issues) })
+  }
+
+  const target = Math.max(input.wordLength, input.minWords)
+  // Headroom so long articles + FAQs + the other JSON fields don't get truncated.
+  const outputBudget = Math.min(12000, Math.round(target * 2.2) + input.faqCount * 140 + 1200)
+  const params = isReasoningModel(TEXT_MODEL)
+    ? { max_completion_tokens: outputBudget + 8000, reasoning_effort: 'low' }
+    : {
+        // Warm enough for varied phrasing, low enough to stay on the facts.
+        temperature: 0.6,
+        presence_penalty: 0.2,
+        max_tokens: outputBudget,
+      }
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey()}` },
     body: JSON.stringify({
       model: TEXT_MODEL,
-      messages: [
-        { role: 'system', content: buildSystemPrompt(input.wordLength, input.faqCount) },
-        { role: 'user', content: userPrompt },
-      ],
+      messages,
       response_format: { type: 'json_object' },
-      temperature: 0.7,
-      // Headroom so long articles + FAQs + the other JSON fields don't get truncated.
-      max_tokens: Math.min(12000, Math.round(input.wordLength * 2) + input.faqCount * 120 + 800),
+      ...params,
     }),
   })
 
@@ -52,32 +87,44 @@ async function chatJson(input: RewriteInput): Promise<RewrittenArticle> {
   const data = await res.json()
   const raw = data.choices?.[0]?.message?.content
   if (!raw) throw new Error('OpenAI chat returned no content')
+  if (data.choices?.[0]?.finish_reason === 'length') throw new Error('OpenAI rewrite was cut off (too long)')
 
-  const parsed = JSON.parse(raw) as Partial<RewrittenArticle>
+  let parsed: Partial<RewrittenArticle>
+  try {
+    parsed = JSON.parse(raw) as Partial<RewrittenArticle>
+  } catch {
+    throw new Error('OpenAI rewrite was not valid JSON')
+  }
   if (!parsed.title || !parsed.content) throw new Error('OpenAI rewrite missing title/content')
 
   const validSlug = input.categories.some((c) => c.slug === parsed.categorySlug)
+  const title = String(parsed.title).trim().slice(0, 480)
   return {
-    title: String(parsed.title).slice(0, 480),
-    content: String(parsed.content),
-    excerpt: String(parsed.excerpt || '').slice(0, 300),
-    tags: Array.isArray(parsed.tags) ? parsed.tags.map(String).slice(0, 8) : [],
-    seoTitle: String(parsed.seoTitle || parsed.title).slice(0, 190),
-    seoDescription: String(parsed.seoDescription || parsed.excerpt || '').slice(0, 300),
-    categorySlug: validSlug ? parsed.categorySlug! : null,
-    imageAlt: String(parsed.imageAlt || parsed.title).slice(0, 190),
-    imagePrompt: String(parsed.imagePrompt || parsed.title).slice(0, 900),
-    faqs: Array.isArray(parsed.faqs)
-      ? parsed.faqs
-          .filter((f): f is { question: string; answer: string } =>
-            !!f && typeof f === 'object' && typeof (f as { question?: unknown }).question === 'string' && typeof (f as { answer?: unknown }).answer === 'string')
-          .map((f) => ({ question: String(f.question), answer: String(f.answer) }))
-      : [],
+    raw,
+    article: {
+      title,
+      focusKeyword: String(parsed.focusKeyword || '').trim().toLowerCase().slice(0, 60),
+      content: String(parsed.content),
+      excerpt: String(parsed.excerpt || '').trim().slice(0, 300),
+      tags: asStringArray(parsed.tags, 10),
+      seoTitle: String(parsed.seoTitle || title).trim().slice(0, 190),
+      seoDescription: String(parsed.seoDescription || parsed.excerpt || '').trim().slice(0, 300),
+      categorySlug: validSlug ? parsed.categorySlug! : null,
+      imageAlt: String(parsed.imageAlt || title).trim().slice(0, 190),
+      imagePrompt: String(parsed.imagePrompt || title).trim().slice(0, 900),
+      imageSubjects: asStringArray(parsed.imageSubjects, 3),
+      faqs: Array.isArray(parsed.faqs)
+        ? parsed.faqs
+            .filter((f): f is { question: string; answer: string } =>
+              !!f && typeof f === 'object' && typeof (f as { question?: unknown }).question === 'string' && typeof (f as { answer?: unknown }).answer === 'string')
+            .map((f) => ({ question: String(f.question), answer: String(f.answer) }))
+        : [],
+    },
   }
 }
 
-export async function rewriteArticle(input: RewriteInput): Promise<RewrittenArticle> {
-  return chatJson(input)
+export async function rewriteArticle(input: RewriteInput, retry?: RewriteRetry): Promise<RewriteResult> {
+  return chatJson(input, retry)
 }
 
 /** Generate a cover image, returned as a PNG data URI ready for Cloudinary. */
