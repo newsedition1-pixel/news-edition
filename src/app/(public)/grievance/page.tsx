@@ -31,6 +31,9 @@ export default function GrievancePage() {
             <strong>Phone:</strong> <a href="tel:+917417794904">+91 74177 94904</a><br />
             <strong>Address:</strong> C-43, Regal Building, Connaught Place, New Delhi — 110001, India
           </p>
+          <p>
+            <strong>Owner of NewsEdition:</strong> Amit Gautam. See the <Link href="/about">About page</Link>.
+          </p>
         </div>
       </div>
 

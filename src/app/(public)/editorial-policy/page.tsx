@@ -27,7 +27,7 @@ export default function EditorialPolicyPage() {
         <div className={styles.body}>
           <p>
             NewsEdition is an independent Indian digital news platform founded in 2024 by Amit Gautam,
-            our Founder and Editor-in-Chief. We operate from New Delhi. See the{' '}
+            who owns it and is its Editor-in-Chief. We operate from New Delhi. See the{' '}
             <Link href="/about">About page</Link> for more, and the <Link href="/contact">Contact page</Link>{' '}
             for our address, email and phone number.
           </p>

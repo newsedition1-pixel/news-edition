@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import styles from '../static.module.scss'
 
 export const metadata: Metadata = {
@@ -117,6 +118,17 @@ export default function AboutPage() {
             <div className={styles.teamName}>Amit Gautam</div>
             <div className={styles.teamRole}>Founder &amp; Editor-in-Chief</div>
           </div>
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>Ownership</h2>
+        <div className={styles.body}>
+          <p>
+            NewsEdition is owned by Amit Gautam, who is also its Editor-in-Chief and Grievance Officer.
+            Our address, email and phone number are on the <Link href="/contact">Contact page</Link>, and
+            complaints about content go to the <Link href="/grievance">Grievance Officer</Link>.
+          </p>
         </div>
       </div>
 
