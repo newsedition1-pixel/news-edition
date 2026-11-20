@@ -5,7 +5,7 @@ import { siteUrl, pageAlternates } from '@/lib/seo'
 
 export const metadata: Metadata = {
   title: 'Editorial Policy',
-  description: 'How NewsEdition works: who runs it, what it covers, how authors and dates are shown, how AI tools are used and labelled, and how to report errors.',
+  description: 'How NewsEdition works: who runs it, what it covers, how authors and dates are shown, how AI tools are used, and how to report errors.',
   alternates: pageAlternates(`${siteUrl}/editorial-policy`),
 }
 
@@ -71,10 +71,6 @@ export default function EditorialPolicyPage() {
           <p>
             AI-assisted articles name the publisher that reported the story and end with a &quot;Source&quot;
             link to it. Earlier AI-assisted articles may not have this line.
-          </p>
-          <p>
-            Articles produced with AI carry a visible note on the article page, so readers can tell them
-            apart from articles written without AI.
           </p>
         </div>
       </div>
