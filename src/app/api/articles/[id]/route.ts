@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/dal'
 import { db } from '@/lib/db'
 import { articles } from '@/lib/db/schema'
@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { slugify, sanitizeFaqs } from '@/lib/utils'
 import { deleteFromCloudinary } from '@/lib/cloudinary'
 import { notifyIndexing } from '@/lib/googleIndexing'
+import { shareArticle } from '@/lib/social/share'
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -70,6 +71,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (becomingPublished) {
       // Draft/preview → published
       notifyIndexing(articleUrl, 'URL_UPDATED')
+      // Social media (off unless the owner turned it on); runs after the response, shares an article once, never throws.
+      after(() => shareArticle(updated.id).then(() => undefined))
     } else if (wasPublished && updated.status !== 'published') {
       // Published → unpublished (draft/preview)
       notifyIndexing(articleUrl, 'URL_DELETED')

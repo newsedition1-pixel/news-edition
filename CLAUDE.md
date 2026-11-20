@@ -58,6 +58,21 @@ CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
 # Outside cron service (optional, production): shared secret for /api/cron/news
 CRON_SECRET=                # openssl rand -hex 32
 
+# Social posting (optional; a platform with no keys is skipped; mode is set in Admin > News Automation, default OFF)
+TELEGRAM_BOT_TOKEN=         # bot that is an admin of the channel
+TELEGRAM_CHAT_ID=           # @channelusername or numeric id
+X_API_KEY=                  # X developer console, OAuth 1.0a keys of the posting account
+X_API_SECRET=
+X_ACCESS_TOKEN=
+X_ACCESS_TOKEN_SECRET=
+X_LINK_MODE=top             # always | top | never: a tweet with a link costs $0.20 on the X API, without $0.015
+META_PAGE_ACCESS_TOKEN=     # Page access token (pages_manage_posts, instagram_content_publish)
+FACEBOOK_PAGE_ID=
+INSTAGRAM_ACCOUNT_ID=       # Instagram professional account linked to the Page
+META_GRAPH_VERSION=v23.0
+SOCIAL_WEBHOOK_URL=         # Make / Zapier / n8n URL: gets every article as JSON
+SOCIAL_WEBHOOK_SECRET=      # sent as Authorization: Bearer
+
 # Email / SMTP
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=465
@@ -243,6 +258,18 @@ All SEO identity and JSON-LD live in `src/lib/seo.ts` (site URL, X handle, logo,
 4. On article delete: `deleteFromCloudinary(publicId)` called before DB row removal
 
 ---
+
+## Social Posting (`/admin/news-automation`, card "Social media")
+
+Every article that goes live is shared on social media by `shareArticle()` (`lib/social/share.ts`), called from `lib/news/publish.ts` (scheduled and admin-generated articles) and, through `after()`, from `POST /api/articles` and the draft-to-published `PATCH /api/articles/[id]`. It never throws and never undoes a publish.
+
+- **Mode** (`settings.socialAutoPost`): `off` (default, nothing happens), `dry` (writes the posts into the log so the admin can read them, sends nothing), `on`. Live asks for confirmation. A platform without its keys is skipped.
+- **Who gets what:** Telegram and X get every article. Instagram and Facebook get *top stories* only (`lib/social/policy.ts`): at most 8 a day, 07:00-23:00 IST, paced over the day, at least 45 min apart; a top story is one carried by 2+ trusted publishers (or any story after a 2 h quiet stretch; an editor's own article always qualifies). Instagram also skips covers that are labelled AI illustrations. The webhook gets every article with `feed: true|false`.
+- **Posts** (`lib/social/compose.ts`, `hashtags.ts`): headline first (it carries the keywords), one or two summary sentences, the link where useful, few hashtags (Instagram <= 5, Telegram 4, X and Facebook 2; brand tag `#NewsEdition`, desk tag, topic tags from the article tags). Instagram gets a `Topics:` keyword line and "link in bio"; its picture is the cover padded to 4:5 through a Cloudinary URL (`b_blurred` is video-only, do not use it for images).
+- **X cost:** pay-per-use API: $0.015 per post, $0.20 per post that contains a URL. `X_LINK_MODE=top` (default) puts the link only in top-story tweets; a no-link tweet carries no domain name either (it would be read as a URL).
+- **Senders** (`lib/social/channels.ts`): Telegram Bot API (`sendPhoto`, falls back to `sendMessage`), X `POST /2/tweets` with OAuth 1.0a (`oauth1.ts`, tested against X's documented example), Facebook Graph `/{page}/feed` (link post), Instagram Graph `/{ig}/media` then `/media_publish`, generic webhook. All take `fetch` as a parameter and return `{ok, ref|error}`.
+- **Log** (`settings.socialPostLog`, `lib/social/log.ts`): last 60 shares with the result per platform; an article already shared for real is never posted again, and a failed platform is not retried automatically (avoids doubles). Secrets are scrubbed from stored errors.
+- Tests: `npm test` covers composing, hashtags, policy, log, OAuth signing and every sender with a fake `fetch`. Not covered: live calls to the platforms.
 
 ## Admin Panel
 
