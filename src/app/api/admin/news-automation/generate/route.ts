@@ -4,7 +4,8 @@ import { db } from '@/lib/db'
 import { articles, categories } from '@/lib/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { clampWordLength, getNewsWordLength, setSetting, NEWS_WORD_LENGTH_KEY } from '@/lib/settings'
+import { clampWordLength, getNewsAutoPublish, getNewsWordLength, setSetting, NEWS_AUTO_PUBLISH_KEY, NEWS_WORD_LENGTH_KEY } from '@/lib/settings'
+import { notifyIndexing } from '@/lib/googleIndexing'
 import { buildArticleFromStory, SkipStory, type ImageMode, type StoryRef } from '@/lib/news/pipeline'
 import { isTrustedUrl } from '@/lib/news/publishers'
 import { slugFromTitle } from '@/lib/news/meta'
@@ -24,7 +25,7 @@ const DEFAULT_FAQS = 6
 interface ItemResult {
   title: string
   sourceUrl: string
-  status: 'draft' | 'skipped' | 'failed'
+  status: 'published' | 'draft' | 'skipped' | 'failed'
   id?: number
   slug?: string
   imageSource?: 'commons' | 'publisher' | 'generated' | 'none'
@@ -62,9 +63,7 @@ function parseStories(input: unknown): StoryRef[] {
 }
 
 function parseImageMode(body: Record<string, unknown>): ImageMode {
-  if (body.imageMode === 'licensed_or_ai' || body.imageMode === 'source' || body.imageMode === 'licensed') return body.imageMode
-  // Older clients sent a boolean.
-  return body.generateImage === true ? 'licensed_or_ai' : 'licensed'
+  return body.imageMode === 'source_first' || body.imageMode === 'source' ? 'source_first' : 'licensed_first'
 }
 
 async function mapPool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -100,13 +99,21 @@ export async function POST(request: NextRequest) {
     }
 
     const imageMode = parseImageMode(body)
+
+    // Publish straight away (the owner's choice) or save drafts for an editor. The admin's choice is
+    // remembered. Even when publishing is on, an article that needs a human look is held as a draft.
+    let autoPublish: boolean
+    if (typeof body.autoPublish === 'boolean') {
+      autoPublish = body.autoPublish
+      await setSetting(NEWS_AUTO_PUBLISH_KEY, String(autoPublish))
+    } else {
+      autoPublish = await getNewsAutoPublish()
+    }
     const rawFaq = body.faqCount
     const faqCount = rawFaq === undefined || rawFaq === null || rawFaq === ''
       ? DEFAULT_FAQS
       : Math.min(MAX_FAQS, Math.max(0, Math.round(Number(rawFaq)) || 0))
 
-    // Editorial review: AI-generated articles are ALWAYS saved as drafts. An editor reads and
-    // publishes each one from Admin → Articles. A `publishNow` flag in the request is ignored.
     const cats = await db
       .select({ id: categories.id, slug: categories.slug, name: categories.name })
       .from(categories)
@@ -132,6 +139,8 @@ export async function POST(request: NextRequest) {
         const taken = await db.select({ id: articles.id }).from(articles).where(eq(articles.slug, baseSlug)).limit(1)
         const slug = taken.length > 0 ? `${baseSlug}-${Date.now().toString(36)}` : baseSlug
 
+        const holdReason = built.stats.holdReason
+        const publish = autoPublish && !holdReason
         const now = new Date()
         const [article] = await db.insert(articles).values({
           title: built.title,
@@ -143,23 +152,29 @@ export async function POST(request: NextRequest) {
           coverImagePublicId: built.coverImagePublicId,
           categoryId: built.categoryId,
           authorId: session.user.id,
-          status: 'draft',
+          status: publish ? 'published' : 'draft',
           tags: built.tags.length ? built.tags : null,
           faqs: built.faqs,
           seoTitle: built.seoTitle || null,
           seoDescription: built.seoDescription || null,
           sourceUrl: built.sourceUrl,
           isAiGenerated: true,
-          publishedAt: null,
+          publishedAt: publish ? now : null,
           createdAt: now,
           updatedAt: now,
         }).returning()
 
         created++
+        if (publish) {
+          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
+          notifyIndexing(`${siteUrl}/article/${article.slug}`, 'URL_UPDATED')
+          revalidatePath(`/article/${article.slug}`)
+          revalidatePath('/')
+        }
         return {
           title: article.title,
           sourceUrl: built.sourceUrl,
-          status: 'draft',
+          status: publish ? 'published' : 'draft',
           id: article.id,
           slug: article.slug,
           imageSource: built.stats.imageSource,
@@ -168,6 +183,7 @@ export async function POST(request: NextRequest) {
           internalLinks: built.stats.internalLinks,
           externalLinks: built.stats.externalLinks,
           warnings: built.stats.warnings,
+          reason: autoPublish && holdReason ? `Saved as a draft for an editor: ${holdReason}.` : undefined,
         }
       } catch (err) {
         if (err instanceof SkipStory) return { title: story.title, sourceUrl: leadUrl, status: 'skipped', reason: err.message }

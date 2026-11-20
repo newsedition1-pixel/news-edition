@@ -18,7 +18,7 @@ interface Candidate {
 interface ItemResult {
   title: string
   sourceUrl: string
-  status: 'draft' | 'skipped' | 'failed'
+  status: 'published' | 'draft' | 'skipped' | 'failed'
   id?: number
   slug?: string
   imageSource?: 'commons' | 'publisher' | 'generated' | 'none'
@@ -30,17 +30,18 @@ interface ItemResult {
   reason?: string
 }
 
-type ImageMode = 'licensed' | 'licensed_or_ai' | 'source'
+type ImageMode = 'licensed_first' | 'source_first'
 
 const MAX_ITEMS = 6
 const MIN_WORDS = 600
 const MAX_WORDS = 4000
 const MAX_FAQS = 20
 
-export function NewsAutomation({ defaultWordLength }: { defaultWordLength: number }) {
+export function NewsAutomation({ defaultWordLength, defaultAutoPublish }: { defaultWordLength: number; defaultAutoPublish: boolean }) {
   const [query, setQuery] = useState('')
   const [wordLength, setWordLength] = useState(defaultWordLength)
-  const [imageMode, setImageMode] = useState<ImageMode>('licensed')
+  const [imageMode, setImageMode] = useState<ImageMode>('licensed_first')
+  const [autoPublish, setAutoPublish] = useState(defaultAutoPublish)
   const [faqCount, setFaqCount] = useState(6)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -111,6 +112,7 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
           stories: itemsToProcess.map((c) => ({ title: c.title, sources: c.sources, trendTerm: c.trendTerm })),
           wordLength,
           imageMode,
+          autoPublish,
           faqCount,
         }),
       })
@@ -120,7 +122,7 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
       // Drop stories that now have a draft (or were already covered) from the list.
       const done = new Set<string>(
         (json.results as ItemResult[])
-          .filter((r) => r.status === 'draft' || r.reason === 'Already covered')
+          .filter((r) => r.status === 'published' || r.status === 'draft' || r.reason === 'Already covered')
           .map((r) => r.sourceUrl)
       )
       setCandidates((prev) => prev.filter((c) => !c.sources.some((s) => done.has(s.url))))
@@ -169,26 +171,34 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
 
         <div className={styles.optionGrid}>
           <fieldset className={styles.option}>
-            <legend className={styles.optionLegend}>Cover image</legend>
+            <legend className={styles.optionLegend}>Cover image (never left empty)</legend>
             <label className={styles.radio}>
-              <input type="radio" name="imageMode" checked={imageMode === 'licensed'} onChange={() => setImageMode('licensed')} />
-              Licensed photo from Wikimedia Commons (credited). No image if none fits.
+              <input type="radio" name="imageMode" checked={imageMode === 'licensed_first'} onChange={() => setImageMode('licensed_first')} />
+              Licensed Wikimedia photo first, else the publisher&apos;s news photo
             </label>
             <label className={styles.radio}>
-              <input type="radio" name="imageMode" checked={imageMode === 'licensed_or_ai'} onChange={() => setImageMode('licensed_or_ai')} />
-              Licensed photo, else AI illustration (labelled as an illustration, costs money)
+              <input type="radio" name="imageMode" checked={imageMode === 'source_first'} onChange={() => setImageMode('source_first')} />
+              The publisher&apos;s news photo first, else a licensed photo
             </label>
-            <label className={styles.radio}>
-              <input type="radio" name="imageMode" checked={imageMode === 'source'} onChange={() => setImageMode('source')} />
-              The publisher&apos;s own image (credited). Copyright risk: you need the publisher&apos;s permission.
-            </label>
+            <p className={styles.radio}>
+              If neither exists, a labelled AI illustration is made. The NewsEdition logo is added to every cover.
+              Publisher photos are copyrighted; they are credited to the publisher.
+            </p>
           </fieldset>
 
           <fieldset className={styles.option}>
             <legend className={styles.optionLegend}>Publishing</legend>
+            <label className={styles.radio}>
+              <input type="radio" name="publishMode" checked={autoPublish} onChange={() => setAutoPublish(true)} />
+              Publish automatically when every check passes
+            </label>
+            <label className={styles.radio}>
+              <input type="radio" name="publishMode" checked={!autoPublish} onChange={() => setAutoPublish(false)} />
+              Save as draft for an editor
+            </label>
             <p className={styles.radio}>
-              Always saved as a draft. An editor reviews each article and publishes it from
-              Admin → Articles (look for the AI badge).
+              An article that needs a human look (for example names that are not in the sources) is always saved as a draft.
+              {' '}Your choice is remembered for the next run.
             </p>
           </fieldset>
 
@@ -276,8 +286,8 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
               disabled={generating || itemsToProcess.length === 0}
             >
               {generating
-                ? 'Generating drafts…'
-                : `Generate drafts (${itemsToProcess.length})`}
+                ? (autoPublish ? 'Generating and publishing…' : 'Generating drafts…')
+                : `${autoPublish ? 'Generate and publish' : 'Generate drafts'} (${itemsToProcess.length})`}
             </button>
             {generating && <span className={styles.working}>This takes a minute or two per article: reading the full reports, writing, fact-checking, finding an image.</span>}
           </div>
@@ -292,16 +302,18 @@ export function NewsAutomation({ defaultWordLength }: { defaultWordLength: numbe
               <li key={i} className={styles[`res_${r.status}`]}>
                 <span className={styles.resBadge}>{r.status}</span>
                 <span className={styles.resTitle}>
-                  {r.status === 'draft' && r.id
+                  {r.status === 'published' && r.slug
+                    ? <a href={`/article/${r.slug}`} target="_blank" rel="noopener noreferrer">{r.title}</a>
+                    : r.status === 'draft' && r.id
                     ? <a href={`/admin/articles/${r.id}/edit`} target="_blank" rel="noopener noreferrer">{r.title}</a>
                     : r.title}
                 </span>
-                {r.status === 'draft' && (
+                {(r.status === 'published' || r.status === 'draft') && (
                   <span className={styles.resImg}>
                     {r.wordCount} words · {r.internalLinks ?? 0} internal / {r.externalLinks ?? 0} external links · {r.faqCount ?? 0} FAQs · image: {r.imageSource}
                   </span>
                 )}
-                {r.status === 'draft' && r.warnings && r.warnings.length > 0 && (
+                {(r.status === 'published' || r.status === 'draft') && r.warnings && r.warnings.length > 0 && (
                   <span className={styles.resReason}>Check: {r.warnings.join(' ')}</span>
                 )}
                 {r.reason && <span className={styles.resReason}>{r.reason}</span>}

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildImageCredit, classifyLicense, parseCommonsPages, relevantImages } from './images'
+import { buildImageCredit, classifyLicense, looksLikePlaceholderImage, parseCommonsPages, relevantImages } from './images'
 
 const meta = (license: string, artist = 'Jane <a href="x">Doe</a>', description = 'Narendra Modi addressing a rally in Hisar') => ({
   LicenseShortName: { value: license },
@@ -53,4 +53,12 @@ test('credit line names the author, licence and Commons', () => {
   assert.match(credit, /by Jane Doe/)
   assert.match(credit, /CC BY-SA 4\.0/)
   assert.match(credit, /via Wikimedia Commons/)
+})
+
+test('site logos, placeholders and vector/gif images are not news photos', () => {
+  assert.equal(looksLikePlaceholderImage('https://www.thehindu.com/static/theme/default/base/img/thehindu-logo.png'), true)
+  assert.equal(looksLikePlaceholderImage('https://example.com/images/default-og-image.jpg'), true)
+  assert.equal(looksLikePlaceholderImage('https://example.com/a/b.svg?x=1'), true)
+  assert.equal(looksLikePlaceholderImage(null), true)
+  assert.equal(looksLikePlaceholderImage('https://th-i.thgim.com/public/incoming/abc123/article9999.ece/alternates/LANDSCAPE_1200/IMG_Rate.jpg'), false)
 })

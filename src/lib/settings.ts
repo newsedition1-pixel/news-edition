@@ -4,6 +4,9 @@ import { settings } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
 
 export const NEWS_WORD_LENGTH_KEY = 'newsWordLength'
+export const NEWS_AUTO_PUBLISH_KEY = 'newsAutoPublish'
+/** Owner decision (20 Nov 2026): articles that pass every check are published without waiting for an editor. */
+export const DEFAULT_NEWS_AUTO_PUBLISH = true
 export const DEFAULT_NEWS_WORD_LENGTH = 800
 export const MIN_NEWS_WORD_LENGTH = 600
 export const MAX_NEWS_WORD_LENGTH = 4000
@@ -31,4 +34,10 @@ export function clampWordLength(input: unknown): number {
 export async function getNewsWordLength(): Promise<number> {
   const stored = await getSetting(NEWS_WORD_LENGTH_KEY)
   return stored ? clampWordLength(stored) : DEFAULT_NEWS_WORD_LENGTH
+}
+
+/** Whether generated articles that pass every check are published straight away (admin's last choice, else the default). */
+export async function getNewsAutoPublish(): Promise<boolean> {
+  const stored = await getSetting(NEWS_AUTO_PUBLISH_KEY)
+  return stored === null ? DEFAULT_NEWS_AUTO_PUBLISH : stored === 'true'
 }

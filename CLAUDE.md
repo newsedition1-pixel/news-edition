@@ -277,12 +277,12 @@ Robots: `src/app/robots.ts`.
 
 ## News Automation (`/admin/news-automation`)
 
-Admin-driven pipeline, always saves **drafts** (`isAiGenerated: true`); an editor publishes.
+Admin-driven pipeline (no cron). Articles are `isAiGenerated: true`. Auto-publish is ON by default (owner decision 20 Nov 2026; toggle in the admin screen, stored in `settings.newsAutoPublish`); an article that needs a human look (`holdReason`: names not in the sources, no cover) is saved as a draft instead. Publishing calls `notifyIndexing` + `revalidatePath` like the manual create route.
 
 1. **Discover** (`lib/news/feeds.ts`): public RSS feeds of the trusted publishers in `lib/news/publishers.ts` (The Hindu, Indian Express, HT, NDTV, TOI, Business Standard, India Today, News18, Scroll, BBC, Al Jazeera) + Google Trends India. `lib/news/cluster.ts` groups the same story across publishers and ranks it: more publishers (confirmed) > fresh > trending > explainer.
 2. **Read**: full text of up to 3 reports (`lib/news/articleText.ts`). Only hosts in `PUBLISHERS` are ever fetched. Paywalled/short pages are skipped.
-3. **Write** (`lib/ai/prompts.ts`, `lib/ai/openai.ts`): model sees only the reports; set `OPENAI_TEXT_MODEL` (default `gpt-4o-mini`, a stronger model writes better).
+3. **Write** (`lib/ai/prompts.ts`, `lib/ai/openai.ts`): model sees only the reports; `OPENAI_TEXT_MODEL` picks the model (default `gpt-4o-mini`).
 4. **Verify** (`lib/news/quality.ts`): >= 600 words, no copied runs (8-gram), every figure and quotation must be in the reports, stock "AI phrases" rejected, publisher named up top, headline rules. One retry with the failure reasons, then the story is skipped (nothing saved). Model HTML is sanitised; the model never writes links.
-5. **Finish** (`lib/news/links.ts`, `images.ts`, `meta.ts`): internal links to related published articles, links to the publishers and official documents, tags, SEO fields, FAQs, licensed cover image from Wikimedia Commons with a credit line (publisher image only as an explicit opt-in), standard `Source:` line (the Reel automation reads it).
+5. **Finish** (`lib/news/links.ts`, `images.ts`, `meta.ts`): internal links to related published articles, links to the publishers and official documents, tags, SEO fields, FAQs, cover image that is never empty (Wikimedia Commons licensed photo, else the publisher's own news photo credited to them, else a labelled AI illustration; order switchable) with the NewsEdition logo burned in through a Cloudinary overlay (`lib/news/watermark.ts`, logo bytes in `watermarkData.ts`), standard `Source:` line (the Reel automation reads it). Set `OPENAI_TEXT_MODEL` (production is `gpt-4.1`; GPT-5 / o-series are handled but slower).
 
 Tests: `npm test` (node test runner via tsx; pure modules only, no network).

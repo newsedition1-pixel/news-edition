@@ -4,6 +4,11 @@ import { buildRetryPrompt, buildSystemPrompt, buildUserPrompt, type PromptInput 
 const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini'
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
 
+/** GPT-5 and o-series models reject temperature, presence_penalty and max_tokens, and spend part of the budget on reasoning. */
+export function isReasoningModel(model: string): boolean {
+  return /^(o\d|gpt-5)/i.test(model)
+}
+
 function apiKey(): string {
   const key = process.env.OPENAI_API_KEY
   if (!key) throw new Error('OPENAI_API_KEY is not set')
@@ -53,6 +58,16 @@ async function chatJson(input: RewriteInput, retry?: RewriteRetry): Promise<Rewr
   }
 
   const target = Math.max(input.wordLength, input.minWords)
+  // Headroom so long articles + FAQs + the other JSON fields don't get truncated.
+  const outputBudget = Math.min(12000, Math.round(target * 2.2) + input.faqCount * 140 + 1200)
+  const params = isReasoningModel(TEXT_MODEL)
+    ? { max_completion_tokens: outputBudget + 8000, reasoning_effort: 'low' }
+    : {
+        // Warm enough for varied phrasing, low enough to stay on the facts.
+        temperature: 0.6,
+        presence_penalty: 0.2,
+        max_tokens: outputBudget,
+      }
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey()}` },
@@ -60,11 +75,7 @@ async function chatJson(input: RewriteInput, retry?: RewriteRetry): Promise<Rewr
       model: TEXT_MODEL,
       messages,
       response_format: { type: 'json_object' },
-      // Warm enough for varied phrasing, low enough to stay on the facts.
-      temperature: 0.6,
-      presence_penalty: 0.2,
-      // Headroom so long articles + FAQs + the other JSON fields don't get truncated.
-      max_tokens: Math.min(12000, Math.round(target * 2.2) + input.faqCount * 140 + 1200),
+      ...params,
     }),
   })
 

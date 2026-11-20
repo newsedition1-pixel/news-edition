@@ -2,13 +2,14 @@ import 'server-only'
 import { db } from '@/lib/db'
 import { articles, assets } from '@/lib/db/schema'
 import { desc, eq } from 'drizzle-orm'
-import { uploadToCloudinary } from '@/lib/cloudinary'
+import { deleteFromCloudinary, uploadToCloudinary } from '@/lib/cloudinary'
 import { generateCoverImage, rewriteArticle, type RewrittenArticle } from '@/lib/ai/openai'
 import { sanitizeFaqs } from '@/lib/utils'
 import { fetchTrustedArticle, type TrustedArticle } from './feeds'
 import { assessArticle, sanitizeArticleHtml, type QualityReport } from './quality'
 import { assembleArticleHtml, primaryDocumentLinks, type ExternalSource } from './links'
-import { buildImageCredit, buildPublisherImageCredit, searchCommonsImage } from './images'
+import { buildImageCredit, buildPublisherImageCredit, looksLikePlaceholderImage, searchCommonsImage } from './images'
+import { ensureWatermark, watermarkTransformation } from './watermark'
 import { finalizeSeo, finalizeTags, rankInternalCandidates, type PublishedRow } from './meta'
 import { isTrustedUrl } from './publishers'
 import { MIN_NEWS_WORD_LENGTH } from '@/lib/settings'
@@ -16,7 +17,11 @@ import { MIN_NEWS_WORD_LENGTH } from '@/lib/settings'
 /** Why a story was not turned into a draft. Shown to the editor; nothing is saved. */
 export class SkipStory extends Error {}
 
-export type ImageMode = 'licensed' | 'licensed_or_ai' | 'source'
+/**
+ * Which image is tried first. Whatever the mode, the chain never ends empty:
+ * first choice, then the other kind of photo, then a labelled AI illustration.
+ */
+export type ImageMode = 'licensed_first' | 'source_first'
 
 export interface StoryRef {
   title: string
@@ -52,6 +57,8 @@ export interface BuiltArticle {
     externalLinks: number
     imageSource: 'commons' | 'publisher' | 'generated' | 'none'
     focusKeyword: string
+    /** Set when the article passed the checks but should be read by an editor before it goes live. */
+    holdReason: string | null
     warnings: string[]
     sourcesUsed: string[]
   }
@@ -61,8 +68,28 @@ const MIN_REPORT_WORDS = 250
 const MIN_TOTAL_WORDS = 350
 const MAX_REPORTS = 3
 
+const MIN_COVER_WIDTH = 600
+
+/**
+ * Uploads a cover image with the NewsEdition logo burned into the corner. Images narrower than
+ * `MIN_COVER_WIDTH` are rejected (they are almost always logos or thumbnails). Returns whether the
+ * logo made it onto the image so the editor can be told when it did not.
+ */
 async function storeImage(src: string, uploadedBy: string) {
-  const result = await uploadToCloudinary(src, 'newsedition/articles')
+  let logoApplied = true
+  let result
+  try {
+    await ensureWatermark()
+    result = await uploadToCloudinary(src, 'newsedition/articles', { transformation: watermarkTransformation() })
+  } catch {
+    // Logo step failed (Cloudinary rejected the overlay). Keep the picture rather than lose it.
+    logoApplied = false
+    result = await uploadToCloudinary(src, 'newsedition/articles', { transformation: [{ width: 1600, crop: 'limit' }] })
+  }
+  if ((result.width ?? 0) < MIN_COVER_WIDTH) {
+    await deleteFromCloudinary(result.public_id).catch(() => undefined)
+    throw new Error('Image too small to be a news photo')
+  }
   await db.insert(assets).values({
     name: `ai-news-${Date.now()}`,
     url: result.secure_url,
@@ -74,7 +101,7 @@ async function storeImage(src: string, uploadedBy: string) {
     height: result.height,
     uploadedBy,
   })
-  return { url: result.secure_url, publicId: result.public_id }
+  return { url: result.secure_url, publicId: result.public_id, logoApplied }
 }
 
 /** Full text of up to three complete reports from trusted publishers, longest first. */
@@ -143,48 +170,65 @@ async function rewriteVerified(
   throw new SkipStory(`Rejected by the fact check after a retry: ${last?.blocking.join(' ') ?? 'unknown reason'}`)
 }
 
+type Cover = {
+  url: string
+  publicId: string
+  alt: string
+  creditHtml: string
+  kind: 'commons' | 'publisher' | 'generated'
+  logoApplied: boolean
+}
+
 async function pickCover(
   mode: ImageMode,
   article: RewrittenArticle,
   reports: TrustedArticle[],
   uploadedBy: string
-): Promise<{ url: string; publicId: string; alt: string; creditHtml: string; kind: BuiltArticle['stats']['imageSource'] } | null> {
-  const tryCommons = async () => {
+): Promise<Cover | null> {
+  const licensed = async (): Promise<Cover | null> => {
     const subjects = article.imageSubjects.length ? article.imageSubjects : [article.focusKeyword || article.title]
     const img = await searchCommonsImage(subjects)
     if (!img) return null
     try {
       const stored = await storeImage(img.url, uploadedBy)
-      return { ...stored, alt: img.title.slice(0, 190), creditHtml: buildImageCredit(img), kind: 'commons' as const }
+      return { ...stored, alt: img.title.slice(0, 190), creditHtml: buildImageCredit(img), kind: 'commons' }
     } catch {
       return null
     }
   }
 
-  if (mode === 'source') {
-    const lead = reports.find((r) => r.imageUrl)
-    if (lead?.imageUrl) {
+  // The news photo: the picture the publisher itself used for the story (credited to the publisher).
+  const newsPhoto = async (): Promise<Cover | null> => {
+    for (const r of reports) {
+      if (!r.imageUrl || looksLikePlaceholderImage(r.imageUrl)) continue
       try {
-        const stored = await storeImage(lead.imageUrl, uploadedBy)
-        return { ...stored, alt: article.imageAlt, creditHtml: buildPublisherImageCredit(lead.publisher.name, lead.finalUrl), kind: 'publisher' }
+        const stored = await storeImage(r.imageUrl, uploadedBy)
+        return { ...stored, alt: article.imageAlt, creditHtml: buildPublisherImageCredit(r.publisher.name, r.finalUrl), kind: 'publisher' }
       } catch {
-        /* fall through to a licensed image */
+        /* try the next report's image */
       }
     }
+    return null
   }
 
-  const commons = await tryCommons()
-  if (commons) return commons
+  const steps = mode === 'source_first' ? [newsPhoto, licensed] : [licensed, newsPhoto]
+  for (const step of steps) {
+    const cover = await step()
+    if (cover) return cover
+  }
 
-  if (mode === 'licensed_or_ai') {
-    try {
-      const stored = await storeImage(await generateCoverImage(article.imagePrompt), uploadedBy)
-      return { ...stored, alt: article.imageAlt, creditHtml: '<p><em>Cover image: AI-generated illustration, not a photograph of the event.</em></p>', kind: 'generated' }
-    } catch {
-      return null
+  // Last resort so a story never goes out without a cover: a clearly labelled illustration.
+  try {
+    const stored = await storeImage(await generateCoverImage(article.imagePrompt), uploadedBy)
+    return {
+      ...stored,
+      alt: article.imageAlt,
+      creditHtml: '<p><em>Cover image: AI-generated illustration, not a photograph of the event.</em></p>',
+      kind: 'generated',
     }
+  } catch {
+    return null
   }
-  return null
 }
 
 async function loadPublished(): Promise<PublishedRow[]> {
@@ -206,6 +250,13 @@ export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptio
   const seo = finalizeSeo({ title: article.title, seoTitle: article.seoTitle, seoDescription: article.seoDescription, excerpt: article.excerpt })
 
   const cover = await pickCover(opts.imageMode, article, reports, opts.uploadedBy)
+  const warnings = [...report.warnings]
+  if (cover && !cover.logoApplied) warnings.push('The NewsEdition logo could not be added to the cover image.')
+
+  // Auto-publish is only safe for articles with nothing left to doubt: hold the rest for an editor.
+  let holdReason: string | null = null
+  if (!cover) holdReason = 'no cover image could be saved'
+  else if (report.ungroundedNames.length >= 3) holdReason = `names that are not in the source reports (${report.ungroundedNames.slice(0, 4).join(', ')})`
 
   const primary: ExternalSource = { name: reports[0].publisher.name, url: reports[0].finalUrl, title: story.sources.find((s) => s.url === reports[0].finalUrl)?.title }
   const others: ExternalSource[] = reports.slice(1).map((r) => ({
@@ -245,7 +296,8 @@ export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptio
       externalLinks: assembled.externalLinks,
       imageSource: cover?.kind ?? 'none',
       focusKeyword: article.focusKeyword,
-      warnings: report.warnings,
+      holdReason,
+      warnings,
       sourcesUsed: reports.map((r) => r.publisher.name),
     },
   }

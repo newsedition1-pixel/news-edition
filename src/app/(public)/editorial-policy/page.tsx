@@ -67,14 +67,16 @@ export default function EditorialPolicyPage() {
             and quotations must appear in the reports, and long passages copied from them are rejected.
           </p>
           <p>
-            From 20 November 2026, every AI-assisted article is saved as a draft and is published only
-            after a NewsEdition editor has read and approved it. Earlier AI-assisted articles were not
-            necessarily reviewed this way.
+            An AI-assisted article that passes all of these checks may be published without a NewsEdition
+            editor reading it first. An article that fails a check is not published, and one that mentions
+            people or places the reports do not is held back until an editor has read it. If you see a
+            mistake in any article, please report it through our Corrections page.
           </p>
           <p>
             AI-assisted articles name the publisher that reported the story, link to it, and end with a
-            &quot;Source&quot; line. Cover images on these articles are licensed photographs, credited under the
-            article, or are labelled as illustrations. Earlier AI-assisted articles may not follow all of this.
+            &quot;Source&quot; line. Cover images on these articles are either licensed photographs or the publisher&apos;s own
+            news photo, credited under the article, or are labelled as illustrations; they carry the NewsEdition
+            logo. Earlier AI-assisted articles may not follow all of this.
           </p>
         </div>
       </div>

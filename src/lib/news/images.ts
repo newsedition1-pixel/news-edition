@@ -112,6 +112,13 @@ export function relevantImages(images: CommonsImage[], subjectTerms: string[]): 
     .map((x) => x.img)
 }
 
+/** Publisher "images" that are really the site logo, a placeholder or a tracking pixel, not a news photo. */
+export function looksLikePlaceholderImage(url: string | null | undefined): boolean {
+  if (!url) return true
+  const u = url.toLowerCase()
+  return /(logo|placeholder|default[-_.]?(image|og|share|thumb)|favicon|sprite|blank|spacer|1x1|pixel|avatar|icon[-_.]|brand[-_.]?image|no[-_]?image|fallback)/.test(u) || /\.(svg|gif)(\?|$)/.test(u)
+}
+
 export function buildImageCredit(img: CommonsImage): string {
   const licence = img.licenseUrl
     ? `<a href="${escapeHtml(img.licenseUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(img.license)}</a>`
