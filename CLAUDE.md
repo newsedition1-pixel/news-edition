@@ -272,3 +272,17 @@ Robots: `src/app/robots.ts`.
 - Static assets: `immutable` cache header (1 year)
 - Avoid `backdrop-filter` in card overlays — high GPU cost
 - `revalidate = 60` on home, `300` on category pages, `3600` on articles
+
+---
+
+## News Automation (`/admin/news-automation`)
+
+Admin-driven pipeline, always saves **drafts** (`isAiGenerated: true`); an editor publishes.
+
+1. **Discover** (`lib/news/feeds.ts`): public RSS feeds of the trusted publishers in `lib/news/publishers.ts` (The Hindu, Indian Express, HT, NDTV, TOI, Business Standard, India Today, News18, Scroll, BBC, Al Jazeera) + Google Trends India. `lib/news/cluster.ts` groups the same story across publishers and ranks it: more publishers (confirmed) > fresh > trending > explainer.
+2. **Read**: full text of up to 3 reports (`lib/news/articleText.ts`). Only hosts in `PUBLISHERS` are ever fetched. Paywalled/short pages are skipped.
+3. **Write** (`lib/ai/prompts.ts`, `lib/ai/openai.ts`): model sees only the reports; set `OPENAI_TEXT_MODEL` (default `gpt-4o-mini`, a stronger model writes better).
+4. **Verify** (`lib/news/quality.ts`): >= 600 words, no copied runs (8-gram), every figure and quotation must be in the reports, stock "AI phrases" rejected, publisher named up top, headline rules. One retry with the failure reasons, then the story is skipped (nothing saved). Model HTML is sanitised; the model never writes links.
+5. **Finish** (`lib/news/links.ts`, `images.ts`, `meta.ts`): internal links to related published articles, links to the publishers and official documents, tags, SEO fields, FAQs, licensed cover image from Wikimedia Commons with a credit line (publisher image only as an explicit opt-in), standard `Source:` line (the Reel automation reads it).
+
+Tests: `npm test` (node test runner via tsx; pure modules only, no network).

@@ -60,8 +60,11 @@ export default function EditorialPolicyPage() {
         <div className={styles.body}>
           <p>
             Some NewsEdition articles are drafted with the help of AI tools. For these articles the tool is
-            given a publicly reported headline and short summary and asked to write an original article in
-            its own words. The tool is instructed not to invent quotes, statistics or named sources.
+            given the full text of one to three reports on the same story from established news publishers,
+            such as The Hindu, The Indian Express or the BBC, and asked to write an original article in its
+            own words using only the facts in those reports. The tool is instructed not to invent quotes,
+            statistics or named sources, and the draft is checked by software before it is saved: figures
+            and quotations must appear in the reports, and long passages copied from them are rejected.
           </p>
           <p>
             From 20 November 2026, every AI-assisted article is saved as a draft and is published only
@@ -69,8 +72,9 @@ export default function EditorialPolicyPage() {
             necessarily reviewed this way.
           </p>
           <p>
-            AI-assisted articles name the publisher that reported the story and end with a &quot;Source&quot;
-            link to it. Earlier AI-assisted articles may not have this line.
+            AI-assisted articles name the publisher that reported the story, link to it, and end with a
+            &quot;Source&quot; line. Cover images on these articles are licensed photographs, credited under the
+            article, or are labelled as illustrations. Earlier AI-assisted articles may not follow all of this.
           </p>
         </div>
       </div>

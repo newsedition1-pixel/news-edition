@@ -4,8 +4,8 @@ import { settings } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
 
 export const NEWS_WORD_LENGTH_KEY = 'newsWordLength'
-export const DEFAULT_NEWS_WORD_LENGTH = 1000
-export const MIN_NEWS_WORD_LENGTH = 100
+export const DEFAULT_NEWS_WORD_LENGTH = 800
+export const MIN_NEWS_WORD_LENGTH = 600
 export const MAX_NEWS_WORD_LENGTH = 4000
 
 export async function getSetting(key: string): Promise<string | null> {

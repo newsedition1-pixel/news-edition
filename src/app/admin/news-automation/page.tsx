@@ -14,7 +14,7 @@ export default async function NewsAutomationPage() {
       <div className={styles.header}>
         <h1 className={styles.title}>News Automation</h1>
         <p className={styles.subtitle}>
-          Pull headlines from Google News, rewrite them with AI and generate FAQs, then save as drafts or publish.
+          Finds the stories several trusted publishers are carrying right now, rewrites them from the full reports (600+ words, with internal and external links, FAQs, tags and a licensed cover image) and saves each as a draft for review.
         </p>
       </div>
       <NewsAutomation defaultWordLength={defaultWordLength} />
