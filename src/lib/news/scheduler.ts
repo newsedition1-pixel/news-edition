@@ -16,7 +16,7 @@ import type { Story } from './cluster'
 /** Two runs closer together than this are treated as one (GitHub can fire a late run right behind the next). */
 const MIN_GAP_MS = 20 * 60 * 1000
 /** Do not start another attempt after this long; one attempt can take about two minutes. */
-const START_BUDGET_MS = 150_000
+const START_BUDGET_MS = 120_000
 /** Stories written by the model (and rejected) in one run before it gives up. Unreadable pages cost no model call and do not count. */
 const MAX_ATTEMPTS = 4
 /** Stories looked at in one run, readable or not. */

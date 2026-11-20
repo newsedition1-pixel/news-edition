@@ -68,7 +68,7 @@ export function wordCountOf(text: string): number {
   return t.split(/\s+/).filter((w) => /[A-Za-z0-9ऀ-ॿ]/.test(w)).length
 }
 
-function wordsOf(text: string): string[] {
+export function wordsOf(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[‘’]/g, "'")
@@ -167,7 +167,7 @@ export function extractFigures(text: string): string[] {
   return [...found]
 }
 
-function figureSet(text: string): Set<string> {
+export function figureSet(text: string): Set<string> {
   const set = new Set<string>()
   const re = /\d[\d,]*(?:\.\d+)?/g
   let m: RegExpExecArray | null
@@ -269,7 +269,7 @@ export function aiPhraseHits(text: string): string[] {
   return hits
 }
 
-const CLICKBAIT_RE = /(you won'?t believe|shocking|jaw[- ]dropping|mind[- ]blowing|goes viral|what happened next|this one (trick|thing)|gone wrong|!!+|\?\?+)/i
+export const CLICKBAIT_RE = /(you won'?t believe|shocking|jaw[- ]dropping|mind[- ]blowing|goes viral|what happened next|this one (trick|thing)|gone wrong|!!+|\?\?+)/i
 
 export function sentenceLengthSpread(text: string): number {
   const lens = text
@@ -296,7 +296,7 @@ export function sentencesOf(text: string): string[] {
     .filter((s) => wordsOf(s).length >= 4)
 }
 
-function contentWords(sentence: string): Set<string> {
+export function contentWords(sentence: string): Set<string> {
   return new Set(wordsOf(sentence).filter((w) => w.length >= 3 && !STOPWORDS.has(w)))
 }
 

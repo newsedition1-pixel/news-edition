@@ -19,6 +19,8 @@ export const SOCIAL_MODE_KEY = 'socialAutoPost'
 export type SocialMode = 'off' | 'dry' | 'on'
 /** What was shared, as JSON (see lib/social/log.ts). */
 export const SOCIAL_LOG_KEY = 'socialPostLog'
+/** Recent pre-publication audits, as JSON (see lib/news/auditLog.ts). */
+export const NEWS_AUDIT_LOG_KEY = 'newsAuditLog'
 export const DEFAULT_NEWS_WORD_LENGTH = 800
 export const MIN_NEWS_WORD_LENGTH = 600
 export const MAX_NEWS_WORD_LENGTH = 4000
