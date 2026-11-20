@@ -9,18 +9,29 @@ import { BreakingTicker } from '@/components/news/BreakingTicker'
 import { NewsletterSignup } from '@/components/news/NewsletterSignup'
 import styles from './(public)/page.module.scss'
 import type { ArticleWithRelations } from '@/types'
+import { siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, organizationJsonLd } from '@/lib/seo'
 
 export const metadata: Metadata = {
-  // FIX: Title updated to match page content words.
-  // Old: 'NewsEdition — Breaking News, Latest Updates'
-  // "Breaking" and "Updates" rarely appear in article text — caused
-  // Seobility "page title does not match content" warning.
-  // New title uses words (India, News, Politics, Business, World) that
-  // appear naturally in every article card on the homepage.
-  // OG/Twitter titles are set separately in layout.tsx and are unchanged.
+  // Title uses the words that appear in the story cards on this page (India, Politics,
+  // Business, World) so the title matches the page content. OG/Twitter are repeated here
+  // because a page that sets openGraph replaces the layout's openGraph entirely.
   title: { absolute: 'NewsEdition — India News, Politics, Business & World' },
-  description: 'Your trusted source for breaking news, in-depth analysis, and comprehensive coverage.',
-  alternates: { canonical: '/' },
+  description: 'Latest India news today: politics, business, world, entertainment and Haryana headlines, updated through the day on NewsEdition.',
+  alternates: pageAlternates('/'),
+  openGraph: {
+    type: 'website',
+    url: siteUrl,
+    siteName: SITE_NAME,
+    locale: SITE_LOCALE,
+    title: 'NewsEdition — India News, Politics, Business & World',
+    description: 'Latest India news today: politics, business, world, entertainment and Haryana headlines.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    site: TWITTER_HANDLE,
+    title: 'NewsEdition — India News, Politics, Business & World',
+    description: 'Latest India news today: politics, business, world, entertainment and Haryana headlines.',
+  },
 }
 
 // ISR: served from cache, regenerated at most every 60s. Publishing,
@@ -28,25 +39,7 @@ export const metadata: Metadata = {
 // revalidatePath('/') in the articles API (same pattern as home-sections).
 export const revalidate = 60
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
-
-const organizationLd = {
-  '@context': 'https://schema.org',
-  '@type': 'NewsMediaOrganization',
-  '@id': `${siteUrl}/#organization`,
-  name: 'NewsEdition',
-  url: siteUrl,
-  logo: { '@type': 'ImageObject', url: `${siteUrl}/logo.png`, width: 200, height: 60 },
-  sameAs: [
-    'https://newsedition.medium.com',
-    'https://t.me/newsedition',
-    'https://www.linkedin.com/company/newsedition-in',
-    'https://x.com/NewsEdition_1',
-    'https://www.facebook.com/newsedition/',
-    'https://www.instagram.com/news_edition1',
-    'https://www.youtube.com/@newsedition1',
-  ],
-}
+const organizationLd = organizationJsonLd()
 
 const websiteLd = {
   '@context': 'https://schema.org',
@@ -54,7 +47,7 @@ const websiteLd = {
   '@id': `${siteUrl}/#website`,
   name: 'NewsEdition',
   url: siteUrl,
-  inLanguage: 'en',
+  inLanguage: 'en-IN',
   publisher: { '@id': `${siteUrl}/#organization` },
   potentialAction: {
     '@type': 'SearchAction',

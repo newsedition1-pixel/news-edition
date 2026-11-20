@@ -227,6 +227,12 @@ Variables (`_variables.scss`) and mixins (`_mixins.scss`) are injected via `sass
 - A blocking inline script in the root layout sets `data-theme` on `<html>` before first paint — no flash of wrong theme
 - IMPORTANT: never read `cookies()`/`headers()` in the root layout — it forces every page to render dynamically and disables ISR/static caching sitewide (this is why the theme is applied client-side)
 
+### SEO helpers
+All SEO identity and JSON-LD live in `src/lib/seo.ts` (site URL, X handle, logo, `cleanName()`, title/description rules, `newsArticleJsonLd()`, `breadcrumbJsonLd()`, `organizationJsonLd()`). Use them instead of hand-writing metadata or JSON-LD in a page.
+- A page that sets `alternates` replaces the layout's, so always build it with `pageAlternates(canonicalUrl)` (keeps the RSS `<link rel="alternate">`).
+- A page that sets `openGraph` replaces the layout's entirely, so repeat `siteName` and `locale`.
+- RSS feed: `/feed.xml` (`src/app/feed.xml/route.ts`). AI-bot crawl policy: `src/app/robots.ts`. LLM summary file: `public/llms.txt`.
+
 ### Image Upload Flow
 1. Client POSTs file to `/api/upload`
 2. Server uploads to Cloudinary, returns `url` + `publicId`

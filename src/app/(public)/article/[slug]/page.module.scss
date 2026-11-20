@@ -120,6 +120,18 @@
   margin-top: 2px;
 }
 
+.aiNote {
+  margin: 0 0 $space-6;
+  padding: $space-2 $space-3;
+  border-left: 3px solid var(--border-strong);
+  background: var(--bg-secondary);
+  border-radius: $radius-md;
+  font-size: $text-sm;
+  color: var(--text-secondary);
+
+  a { color: var(--color-primary); text-decoration: underline; }
+}
+
 .coverImage {
   margin-bottom: $space-8;
   border-radius: $radius-2xl;

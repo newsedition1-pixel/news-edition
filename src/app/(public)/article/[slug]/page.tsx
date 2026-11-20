@@ -8,7 +8,11 @@ import { eq, and, desc, ne } from 'drizzle-orm'
 import { ShareButtons } from '@/components/news/ShareButtons'
 import { ArticleCard } from '@/components/news/ArticleCard'
 import { NewsletterSignup } from '@/components/news/NewsletterSignup'
-import { formatDate, slugify } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
+import {
+  siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, authorPath,
+  articleTitleField, articleDescription, newsArticleJsonLd, breadcrumbJsonLd, wasUpdated,
+} from '@/lib/seo'
 import styles from './page.module.scss'
 import type { ArticleWithRelations } from '@/types'
 
@@ -27,6 +31,7 @@ async function getArticle(slug: string) {
     seoTitle: articles.seoTitle, seoDescription: articles.seoDescription,
     viewCount: articles.viewCount, publishedAt: articles.publishedAt,
     createdAt: articles.createdAt, updatedAt: articles.updatedAt,
+    isAiGenerated: articles.isAiGenerated,
     categoryId: categories.id, categoryName: categories.name,
     categorySlug: categories.slug, categoryColor: categories.color,
     authorId: users.id, authorName: users.name, authorImage: users.image,
@@ -45,28 +50,30 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const row = await getArticle(slug)
   if (!row) return { title: 'Article Not Found' }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
   const url = `${siteUrl}/article/${slug}`
-  const title = row.seoTitle || row.title
-  const description = row.seoDescription || row.excerpt || ''
+  const headline = row.seoTitle || row.title
+  const description = articleDescription({ seoDescription: row.seoDescription, excerpt: row.excerpt, content: row.content })
+  const authorName = row.authorName ? cleanName(row.authorName) : null
 
   return {
-    title,
+    title: articleTitleField(headline),
     description,
-    alternates: { canonical: url },
+    alternates: pageAlternates(url),
     openGraph: {
       type: 'article',
       url,
-      title,
+      siteName: SITE_NAME,
+      locale: SITE_LOCALE,
+      title: headline,
       description,
-      images: row.coverImage ? [{ url: row.coverImage, width: 1200, height: 630, alt: row.coverImageAlt || title }] : [],
+      images: row.coverImage ? [{ url: row.coverImage, width: 1200, height: 630, alt: row.coverImageAlt || row.title }] : [],
       publishedTime: row.publishedAt?.toISOString(),
-      modifiedTime: row.updatedAt?.toISOString(),
-      authors: row.authorName ? [row.authorName] : [],
+      modifiedTime: (row.updatedAt ?? row.publishedAt)?.toISOString(),
+      authors: authorName ? [authorName] : [],
       section: row.categoryName || undefined,
       tags: row.tags || undefined,
     },
-    twitter: { card: 'summary_large_image', title, description },
+    twitter: { card: 'summary_large_image', site: TWITTER_HANDLE, title: headline, description },
   }
 }
 
@@ -130,34 +137,21 @@ export default async function ArticlePage({ params }: Props) {
       .limit(50),
   ])
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
   const articleUrl = `${siteUrl}/article/${slug}`
+  const showUpdated = wasUpdated(article.publishedAt, article.updatedAt)
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'NewsArticle',
-    headline: article.title,
-    description: article.excerpt || '',
-    image: article.coverImage
-      ? [{ '@type': 'ImageObject', url: article.coverImage, width: 1200, height: 630, caption: article.coverImageAlt || article.title }]
-      : [],
-    datePublished: article.publishedAt?.toISOString(),
-    dateModified: article.updatedAt?.toISOString(),
-    inLanguage: 'en',
-    author: article.author
-      ? [{ '@type': 'Person', name: article.author.name, url: `${siteUrl}/author/${article.author.id}/${slugify(article.author.name)}` }]
-      : [],
-    publisher: {
-      '@type': 'NewsMediaOrganization',
-      name: 'NewsEdition',
-      url: siteUrl,
-      logo: { '@type': 'ImageObject', url: `${siteUrl}/logo.png`, width: 200, height: 60 },
-    },
-    mainEntityOfPage: { '@type': 'WebPage', '@id': articleUrl },
-    url: articleUrl,
-    keywords: article.tags?.join(', '),
-    articleSection: article.category?.name,
-  }
+  const jsonLd = newsArticleJsonLd({
+    slug,
+    title: article.title,
+    excerpt: article.excerpt || article.seoDescription,
+    coverImage: article.coverImage,
+    coverImageAlt: article.coverImageAlt,
+    publishedAt: article.publishedAt,
+    updatedAt: article.updatedAt,
+    tags: article.tags,
+    category: article.category,
+    author: article.author,
+  })
 
   const faqs = article.faqs ?? []
   const faqLd = faqs.length > 0 ? {
@@ -170,15 +164,11 @@ export default async function ArticlePage({ params }: Props) {
     })),
   } : null
 
-  const breadcrumbLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
-      ...(article.category ? [{ '@type': 'ListItem', position: 2, name: article.category.name, item: `${siteUrl}/${article.category.slug}` }] : []),
-      { '@type': 'ListItem', position: article.category ? 3 : 2, name: article.title, item: articleUrl },
-    ],
-  }
+  const breadcrumbLd = breadcrumbJsonLd([
+    { name: 'Home', url: siteUrl },
+    ...(article.category ? [{ name: article.category.name, url: `${siteUrl}/${article.category.slug}` }] : []),
+    { name: article.title, url: articleUrl },
+  ])
 
   return (
     <>
@@ -216,17 +206,22 @@ export default async function ArticlePage({ params }: Props) {
 
           <div className={styles.byline}>
             {article.author && (
-              <Link href={`/author/${article.author.id}/${slugify(article.author.name)}`} className={styles.author}>
+              <Link href={authorPath(article.author)} className={styles.author}>
                 <div className={styles.authorAvatar}>
                   {article.author.image ? (
                     <Image src={article.author.image} alt={article.author.name} width={40} height={40} />
                   ) : article.author.name.charAt(0)}
                 </div>
                 <div>
-                  <span className={styles.authorName}>{article.author.name}</span>
+                  <span className={styles.authorName}>{cleanName(article.author.name)}</span>
                   {article.publishedAt && (
                     <time className={styles.date} dateTime={article.publishedAt.toISOString()}>
                       {formatDate(article.publishedAt, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    </time>
+                  )}
+                  {showUpdated && article.updatedAt && (
+                    <time className={styles.date} dateTime={article.updatedAt.toISOString()}>
+                      Updated {formatDate(article.updatedAt, { timeZone: 'Asia/Kolkata' })}
                     </time>
                   )}
                 </div>
@@ -234,6 +229,13 @@ export default async function ArticlePage({ params }: Props) {
             )}
             <ShareButtons title={article.title} url={articleUrl} />
           </div>
+
+          {row.isAiGenerated && (
+            <p className={styles.aiNote}>
+              This article was created with the help of AI tools.{' '}
+              <Link href="/editorial-policy">How we use AI</Link>
+            </p>
+          )}
 
           {/* Cover Image */}
           {article.coverImage && (

@@ -2,33 +2,47 @@ import type { MetadataRoute } from 'next'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
 
+// Private / non-content paths, blocked for every crawler that is allowed in.
+const PRIVATE_PATHS = ['/admin/', '/api/', '/login', '/register', '/verify-email', '/settings/']
+
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
-        // Main crawlers — full access to public content
-        userAgent: ['Googlebot', 'Googlebot-News', 'Bingbot', 'Slurp', 'DuckDuckBot', 'Baiduspider', 'YandexBot'],
+        // Search engines: full access to public content.
+        userAgent: [
+          'Googlebot', 'Googlebot-News', 'Googlebot-Image', 'Bingbot', 'Slurp',
+          'DuckDuckBot', 'Baiduspider', 'YandexBot',
+        ],
         allow: '/',
-        disallow: ['/admin/', '/api/', '/login', '/register', '/verify-email', '/settings/'],
+        disallow: PRIVATE_PATHS,
       },
       {
-        // Image crawlers — allow everything public
-        userAgent: ['Googlebot-Image', 'Bingbot'],
-        allow: ['/article/', '/author/'],
+        // AI search / answer engines and user-triggered fetchers: these are how
+        // NewsEdition gets cited and linked in ChatGPT, Claude and Perplexity answers.
+        // GPTBot (OpenAI's crawler, also used for model training) is allowed on the
+        // owner's decision of 20 Nov 2026; move it back to the blocked group below to undo.
+        userAgent: [
+          'GPTBot', 'OAI-SearchBot', 'ChatGPT-User',
+          'Claude-SearchBot', 'Claude-User',
+          'PerplexityBot', 'Perplexity-User',
+        ],
+        allow: '/',
+        disallow: PRIVATE_PATHS,
       },
       {
-        // Block AI training crawlers
-        userAgent: ['GPTBot', 'ChatGPT-User', 'CCBot', 'anthropic-ai', 'Claude-Web', 'Omgilibot', 'FacebookBot'],
+        // Other AI model-training crawlers stay blocked (blocking these does not
+        // affect search or answer-engine visibility above).
+        userAgent: ['CCBot', 'anthropic-ai', 'Claude-Web', 'Omgilibot', 'FacebookBot'],
         disallow: '/',
       },
       {
-        // Default for all others
+        // Everyone else.
         userAgent: '*',
         allow: '/',
-        disallow: ['/admin/', '/api/', '/login', '/register', '/verify-email', '/settings/'],
+        disallow: PRIVATE_PATHS,
       },
     ],
     sitemap: [`${siteUrl}/sitemap.xml`, `${siteUrl}/news-sitemap.xml`],
-    host: siteUrl,
   }
 }
