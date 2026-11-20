@@ -84,3 +84,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'The scheduled run failed' }, { status: 500 })
   }
 }
+
+/**
+ * Some outside cron services (cron-job.org among them) send POST, or are set to it by mistake, and a
+ * route that only exports GET answers those with 405. The same bearer-token check and the same
+ * 20-minute guard apply, so accepting POST opens nothing new.
+ */
+export const POST = GET
