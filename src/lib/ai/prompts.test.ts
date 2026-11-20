@@ -47,3 +47,21 @@ test('retry prompt adds rebuild advice only when wording was copied', () => {
   assert.match(copied, /rebuild those sentences/)
   assert.doesNotMatch(buildRetryPrompt(['too short']), /rebuild those sentences/)
 })
+
+test('system prompt carries the structure rules: strong lead, official statements, own analysis, no press-release rewrite', () => {
+  const p = buildSystemPrompt(800, 6, 600)
+  assert.match(p, /The lead \(first paragraph/)
+  assert.match(p, /official statement/)
+  assert.match(p, /Never just rewrite a press release/)
+  assert.match(p, /whose text starts with "Analysis"/)
+  assert.match(p, /add no new fact, figure, name, date or quotation/)
+  assert.match(p, /at most three direct quotations/)
+})
+
+test('system prompt asks for real-reader FAQs and against repetition and stock connectors', () => {
+  const p = buildSystemPrompt(800, 6, 600)
+  assert.match(p, /the way a real reader would type or ask it/)
+  assert.match(p, /never copy or restate a sentence that is already in the article/)
+  assert.match(p, /Say each fact once/)
+  assert.match(p, /"Moreover", "Furthermore"/)
+})
