@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classifyStory, deskForSlug, normalizeName, pickAuthorId, rotationOrder, DESKS, SCHEDULE_SLUGS } from './desks'
+import { classifyStory, deskForSlug, lastActivity, normalizeName, pickAuthorId, rotationOrder, DESKS, SCHEDULE_SLUGS } from './desks'
 
 test('every scheduled category has exactly one desk', () => {
   for (const slug of SCHEDULE_SLUGS) assert.ok(deskForSlug(slug), slug)
@@ -57,4 +57,13 @@ test('rotation: never-published first, then oldest, ties in fixed order', () => 
   assert.deepEqual(order, ['business', 'entertainment', 'world', 'politics', 'india'])
   assert.deepEqual(rotationOrder({ india: 5, world: 1 }), ['world', 'india'])
   assert.deepEqual(rotationOrder({}), [])
+})
+
+test('a category that was only tried goes behind the ones that were not', () => {
+  const published = { india: 100, business: null, world: 50, state: null }
+  const tried = { state: 500, world: 20 }
+  const last = lastActivity(published, tried)
+  assert.deepEqual(last, { india: 100, business: null, world: 50, state: 500 })
+  // business was never tried: first. Then world (50), india (100), and state (just tried) last.
+  assert.deepEqual(rotationOrder(last), ['business', 'world', 'india', 'state'])
 })

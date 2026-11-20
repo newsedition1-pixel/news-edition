@@ -140,3 +140,16 @@ export function rotationOrder(lastPublished: Record<string, number | null>): str
     })
     .map((x) => x.slug)
 }
+
+/**
+ * The later of "last published" and "last tried" per category, so a category that was just tried
+ * (even if it failed) goes behind the ones that were not.
+ */
+export function lastActivity(published: Record<string, number | null>, tried: Record<string, number>): Record<string, number | null> {
+  const out: Record<string, number | null> = {}
+  for (const [slug, at] of Object.entries(published)) {
+    const t = tried[slug]
+    out[slug] = at === null ? (t ?? null) : t === undefined ? at : Math.max(at, t)
+  }
+  return out
+}

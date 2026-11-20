@@ -116,6 +116,37 @@ export function copyStats(sourceText: string, outputText: string): { copiedRatio
   return { copiedRatio: copied / out.length, longestRun: longest }
 }
 
+/**
+ * The actual passages (normalised to lower case, without punctuation) where the output repeats
+ * `NGRAM` or more words in a row from the source, longest first. Shown to the model on a retry so
+ * it knows exactly which sentences to rebuild.
+ */
+export function copiedPassages(sourceText: string, outputText: string, limit = 4): string[] {
+  const src = wordsOf(sourceText)
+  const out = wordsOf(withoutQuotes(outputText))
+  if (out.length < NGRAM || src.length < NGRAM) return []
+  const grams = new Set<string>()
+  for (let i = 0; i + NGRAM <= src.length; i++) grams.add(src.slice(i, i + NGRAM).join(' '))
+  const covered = new Array<boolean>(out.length).fill(false)
+  for (let i = 0; i + NGRAM <= out.length; i++) {
+    if (grams.has(out.slice(i, i + NGRAM).join(' '))) for (let k = i; k < i + NGRAM; k++) covered[k] = true
+  }
+  const runs: string[][] = []
+  let cur: string[] = []
+  for (let i = 0; i < out.length; i++) {
+    if (covered[i]) cur.push(out[i])
+    else if (cur.length) {
+      runs.push(cur)
+      cur = []
+    }
+  }
+  if (cur.length) runs.push(cur)
+  return runs
+    .sort((a, b) => b.length - a.length)
+    .slice(0, limit)
+    .map((r) => (r.length > 30 ? `${r.slice(0, 30).join(' ')} …` : r.join(' ')))
+}
+
 /** Figures worth verifying: 2+ digit numbers, decimals and percentages. Small plain counts (1-12) are ignored. */
 export function extractFigures(text: string): string[] {
   const found = new Set<string>()
@@ -155,9 +186,36 @@ const COMMON_CAPS = new Set([
   'english', 'hindi', 'faq', 'q', 'a', 'no', 'yes', 'not', 'however', 'meanwhile', 'instead', 'for',
 ])
 
+/** Spelling out an abbreviation that the source uses is not an invented name ("UN" -> "United Nations"). */
+const EXPANSIONS: Record<string, string[]> = {
+  un: ['united', 'nations'],
+  us: ['united', 'states'],
+  usa: ['united', 'states', 'america'],
+  uk: ['united', 'kingdom'],
+  uae: ['united', 'arab', 'emirates'],
+  eu: ['european', 'union'],
+  rbi: ['reserve', 'bank'],
+  sebi: ['securities', 'exchange', 'board'],
+  sc: ['supreme', 'court'],
+  hc: ['high', 'court'],
+  pm: ['prime', 'minister'],
+  cm: ['chief', 'minister'],
+  icj: ['international', 'court', 'justice'],
+  who: ['world', 'health', 'organization', 'organisation'],
+  nato: ['north', 'atlantic', 'treaty', 'organization', 'organisation'],
+  bjp: ['bharatiya', 'janata', 'party'],
+  aap: ['aam', 'aadmi', 'party'],
+}
+
 /** Capitalised words in mid-sentence (names of people, places, organisations) that never appear in the source. */
 export function ungroundedProperNouns(outputText: string, sourceText: string, extraAllowed: string[] = []): string[] {
-  const srcWords = new Set(wordsOf(sourceText))
+  // Source words with and without a trailing possessive ("Cox's" counts as "Cox").
+  const srcWords = new Set<string>()
+  for (const w of wordsOf(sourceText)) {
+    srcWords.add(w)
+    srcWords.add(w.replace(/'s$/, '').replace(/'$/, ''))
+    for (const full of EXPANSIONS[w] ?? []) srcWords.add(full)
+  }
   const allowed = new Set([...extraAllowed.flatMap((s) => wordsOf(s))])
   const found = new Set<string>()
   const sentences = outputText.split(/(?<=[.!?])\s+|\n+/)
@@ -237,7 +295,9 @@ export function assessArticle(input: QualityInput): QualityReport {
 
   const { copiedRatio, longestRun } = copyStats(input.sourceText, `${bodyText}\n${faqText}`)
   if (longestRun >= 12 || copiedRatio > 0.1) {
-    blocking.push(`Too much of the wording is copied from the source (longest copied run ${longestRun} words, ${(copiedRatio * 100).toFixed(0)}% overlap). Rewrite those parts completely in your own words and sentence structure.`)
+    const passages = copiedPassages(input.sourceText, `${bodyText}\n${faqText}`)
+    const where = passages.length ? ` These passages are copied (rebuild each one): ${passages.map((q) => `"${q}"`).join('; ')}.` : ''
+    blocking.push(`Too much of the wording is copied from the source (longest copied run ${longestRun} words, ${(copiedRatio * 100).toFixed(0)}% overlap). Rewrite those parts completely in your own words and sentence structure.${where}`)
   }
 
   const srcFigures = figureSet(input.sourceText)
@@ -250,10 +310,12 @@ export function assessArticle(input: QualityInput): QualityReport {
   const srcNormalized = wordsOf(input.sourceText).join(' ')
   const unsupportedQuotes = extractQuotes(fullText).filter((q) => !srcNormalized.includes(wordsOf(q).join(' ')))
   if (unsupportedQuotes.length > 0) {
-    blocking.push(`These quoted passages are not word-for-word in the source reports: ${unsupportedQuotes.slice(0, 3).map((q) => `"${q.slice(0, 60)}"`).join('; ')}. Use only exact quotes from the sources, or paraphrase without quotation marks.`)
+    blocking.push(`These quoted passages are not word-for-word in the source reports: ${unsupportedQuotes.slice(0, 3).map((q) => `"${q.slice(0, 110)}"`).join('; ')}. Use only exact quotes from the sources, or paraphrase without quotation marks.`)
   }
 
-  const ungroundedNames = ungroundedProperNouns(fullText, input.sourceText)
+  // Names are checked in the body and FAQs only: headlines and subheadings are often Title Case, so every word in them looks like a name.
+  const namesText = `${htmlToText(input.contentHtml.replace(/<h2\b[\s\S]*?<\/h2>/gi, ' '))}\n${faqText}`
+  const ungroundedNames = ungroundedProperNouns(namesText, input.sourceText, input.publisherNames ?? [])
   if (ungroundedNames.length >= 3) {
     warnings.push(`Names not found in the source reports: ${ungroundedNames.slice(0, 8).join(', ')}.`)
   }

@@ -15,7 +15,15 @@ import { isTrustedUrl } from './publishers'
 import { MIN_NEWS_WORD_LENGTH } from '@/lib/settings'
 
 /** Why a story was not turned into a draft. Shown to the editor; nothing is saved. */
-export class SkipStory extends Error {}
+export class SkipStory extends Error {
+  constructor(
+    message: string,
+    /** `unreadable`: the reports could not be read (cheap, no model call). `rejected`: written but failed the checks. */
+    readonly kind: 'unreadable' | 'rejected' = 'rejected'
+  ) {
+    super(message)
+  }
+}
 
 /**
  * Which image is tried first. Whatever the mode, the chain never ends empty:
@@ -119,7 +127,7 @@ async function gatherReports(story: StoryRef): Promise<TrustedArticle[]> {
   const picked = distinct.slice(0, MAX_REPORTS)
   const total = picked.reduce((n, r) => n + r.wordCount, 0)
   if (picked.length === 0 || total < MIN_TOTAL_WORDS) {
-    throw new SkipStory('The publishers’ full articles could not be read (paywall, blocked or too short), so the story was skipped instead of guessing.')
+    throw new SkipStory('The publishers’ full articles could not be read (paywall, blocked or too short), so the story was skipped instead of guessing.', 'unreadable')
   }
   return picked
 }
