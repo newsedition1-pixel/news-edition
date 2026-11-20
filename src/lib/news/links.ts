@@ -7,6 +7,7 @@
  */
 import { buildSourceNote, cleanSourceName, safeHttpUrl } from '../sources'
 import { isPrimarySourceUrl } from './publishers'
+import { wrapSources } from './sourcesBlock'
 
 export function escapeHtml(value: string): string {
   return value
@@ -166,7 +167,8 @@ export interface Assembled {
 
 /**
  * Final article HTML: body with inline internal links and publisher links, then related reading,
- * further reading, the image credit and the standard "Source:" line (used by the Reel automation).
+ * then one sources block: further reading, the image credit and the standard "Source:" line
+ * (the Reel automation reads that line).
  */
 export function assembleArticleHtml(input: AssembleInput): Assembled {
   const withInternal = insertInternalLinks(input.bodyHtml, input.internal, 3)
@@ -175,7 +177,9 @@ export function assembleArticleHtml(input: AssembleInput): Assembled {
   const further = furtherReadingBlock(input.others, input.documents)
   const credit = input.imageCreditHtml ?? ''
   const sourceNote = buildSourceNote({ name: input.primary.name, url: input.primary.url })
-  const html = [withPublishers.trimEnd(), related, further, credit, sourceNote].filter(Boolean).join('\n')
+  // Further reading, the image credit and the Source line go into one marked block at the very end;
+  // the article page shows that block small, at the bottom of the page (see sourcesBlock.ts).
+  const html = [withPublishers.trimEnd(), related, wrapSources([further, credit, sourceNote])].filter(Boolean).join('\n')
 
   const count = (re: RegExp) => (html.match(re) || []).length
   return {

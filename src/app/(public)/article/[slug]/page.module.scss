@@ -422,3 +422,19 @@
   color: var(--text-muted);
   padding: $space-8;
 }
+
+// Sources, further reading and image credit: small and last on the page, but still readable.
+.sources {
+  margin-top: $space-8;
+  padding-top: $space-3;
+  border-top: 1px solid var(--border);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+
+  p { margin: 0 0 $space-1; }
+  h2 { font-size: inherit; font-weight: $font-semibold; line-height: inherit; margin: 0 0 $space-1; }
+  ul { margin: 0 0 $space-1; padding-left: $space-4; }
+  li { margin: 0; }
+  a { color: inherit; text-decoration: underline; }
+}

@@ -64,8 +64,10 @@ test('assembled article ends with credit and the standard Source line, and count
     documents: [],
     imageCreditHtml: '<p><em>Cover image: test.</em></p>',
   })
-  assert.ok(out.html.trimEnd().endsWith('</a></p>'))
+  assert.ok(out.html.trimEnd().endsWith('</a></p>\n</div>'))
+  assert.match(out.html, /<div class="article-sources">/)
   assert.match(out.html, /<p><strong>Source:<\/strong> <a href="https:\/\/www\.thehindu\.com\/a\.ece"/)
+  assert.ok(out.html.indexOf('article-sources') > out.html.indexOf('Borrowers watch'))
   assert.ok(out.html.indexOf('Cover image') < out.html.indexOf('Source:'))
   assert.ok(out.internalLinks >= 1)
   assert.ok(out.externalLinks >= 3)
