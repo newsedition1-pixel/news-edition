@@ -7,14 +7,16 @@ import { dropCoveredStories } from './fresh'
 import { buildArticleFromStory, SkipStory, type StoryRef } from './pipeline'
 import { saveBuiltArticle } from './publish'
 import { classifyStory, DESKS, pickAuthorId, rotationOrder, SCHEDULE_SLUGS } from './desks'
-import { getNewsAutoPublish, getNewsScheduleEnabled, getNewsWordLength } from '@/lib/settings'
+import { getNewsAutoPublish, getNewsScheduleEnabled, getNewsWordLength, getSetting, setSetting, NEWS_SCHEDULE_FAILED_KEY } from '@/lib/settings'
+import { addFailed, hasFailed, parseFailed } from './failed'
 import type { Story } from './cluster'
 
 /** Two runs closer together than this are treated as one (GitHub can fire a late run right behind the next). */
 const MIN_GAP_MS = 20 * 60 * 1000
 /** Do not start another attempt after this long; one attempt can take about two minutes. */
 const START_BUDGET_MS = 150_000
-const MAX_ATTEMPTS = 3
+/** One run tries at most this many stories, one per category, until one is published. */
+const MAX_ATTEMPTS = 5
 const SCHEDULE_FAQS = 6
 
 export interface DeskStatus {
@@ -154,47 +156,52 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
 
   const [wordLength, autoPublish] = await Promise.all([getNewsWordLength(), getNewsAutoPublish()])
 
+  // Stories that failed recently are not tried again (they would fail the same way).
+  let failed = parseFailed(await getSetting(NEWS_SCHEDULE_FAILED_KEY), Date.now())
+
+  // One attempt per category, in rotation order, so a category that keeps failing cannot starve the others.
   for (const slug of order) {
     const target = usable.get(slug)
     if (!target) continue
-    const pool = byCategory.get(slug) ?? []
-    for (const story of pool.slice(0, 2)) {
-      if (out.attempts.length >= MAX_ATTEMPTS || Date.now() - startedAt > START_BUDGET_MS) {
-        return { ...out, message: 'No article passed the checks in this run (time or attempt limit reached).' }
+    const story = (byCategory.get(slug) ?? []).find((s) => !hasFailed(failed, s.publishers.map((p) => p.url)))
+    if (!story) continue
+    if (out.attempts.length >= MAX_ATTEMPTS || Date.now() - startedAt > START_BUDGET_MS) {
+      return { ...out, message: 'No article passed the checks in this run (time or attempt limit reached).' }
+    }
+    const ref = toStoryRef(story)
+    const urls = ref.sources.map((s) => s.url)
+    const attempt = { title: ref.title, category: slug, result: '' }
+    out.attempts.push(attempt)
+    try {
+      const dupe = await db.select({ id: articles.id }).from(articles).where(inArray(articles.sourceUrl, urls)).limit(1)
+      if (dupe.length > 0) {
+        attempt.result = 'already covered'
+        continue
       }
-      const ref = toStoryRef(story)
-      const attempt = { title: ref.title, category: slug, result: '' }
-      out.attempts.push(attempt)
-      try {
-        const urls = ref.sources.map((s) => s.url)
-        const dupe = await db.select({ id: articles.id }).from(articles).where(inArray(articles.sourceUrl, urls)).limit(1)
-        if (dupe.length > 0) {
-          attempt.result = 'already covered'
-          continue
-        }
-        const built = await buildArticleFromStory(ref, {
-          categories: [{ id: target.id, slug: target.slug, name: target.name }],
-          fixedCategoryId: target.id,
-          wordLength,
-          faqCount: SCHEDULE_FAQS,
-          imageMode: 'licensed_first',
-          uploadedBy: target.authorId,
-        })
-        const saved = await saveBuiltArticle(built, target.authorId, autoPublish)
-        attempt.result = saved.published ? 'published' : `draft (${saved.holdReason ?? 'auto-publish is off'})`
-        return {
-          ...out,
-          status: saved.published ? 'published' : 'draft',
-          message: saved.published ? 'Published.' : `Saved as a draft: ${saved.holdReason ?? 'auto-publish is off'}.`,
-          category: target.name,
-          author: target.authorName,
-          title: saved.title,
-          slug: saved.slug,
-        }
-      } catch (err) {
-        attempt.result = err instanceof SkipStory ? `skipped: ${err.message}` : `failed: ${err instanceof Error ? err.message : 'unknown error'}`
-        if (!(err instanceof SkipStory)) console.error('Scheduled article error:', ref.sources[0]?.url, err)
+      const built = await buildArticleFromStory(ref, {
+        categories: [{ id: target.id, slug: target.slug, name: target.name }],
+        fixedCategoryId: target.id,
+        wordLength,
+        faqCount: SCHEDULE_FAQS,
+        imageMode: 'licensed_first',
+        uploadedBy: target.authorId,
+      })
+      const saved = await saveBuiltArticle(built, target.authorId, autoPublish)
+      attempt.result = saved.published ? 'published' : `draft (${saved.holdReason ?? 'auto-publish is off'})`
+      return {
+        ...out,
+        status: saved.published ? 'published' : 'draft',
+        message: saved.published ? 'Published.' : `Saved as a draft: ${saved.holdReason ?? 'auto-publish is off'}.`,
+        category: target.name,
+        author: target.authorName,
+        title: saved.title,
+        slug: saved.slug,
       }
+    } catch (err) {
+      attempt.result = err instanceof SkipStory ? `skipped: ${err.message}` : `failed: ${err instanceof Error ? err.message : 'unknown error'}`
+      if (!(err instanceof SkipStory)) console.error('Scheduled article error:', urls[0], err)
+      failed = addFailed(failed, urls, Date.now())
+      await setSetting(NEWS_SCHEDULE_FAILED_KEY, JSON.stringify(failed)).catch(() => undefined)
     }
   }
   return { ...out, message: 'No fresh story matched a category that could be published, or none passed the checks.' }

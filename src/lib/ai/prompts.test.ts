@@ -41,3 +41,9 @@ test('very long reports are trimmed and the retry prompt lists every issue', () 
   assert.match(r, /- too short/)
   assert.match(r, /- bad figure/)
 })
+
+test('retry prompt adds rebuild advice only when wording was copied', () => {
+  const copied = buildRetryPrompt(['Too much of the wording is copied from the source (longest copied run 14 words, 9% overlap).'])
+  assert.match(copied, /rebuild those sentences/)
+  assert.doesNotMatch(buildRetryPrompt(['too short']), /rebuild those sentences/)
+})
