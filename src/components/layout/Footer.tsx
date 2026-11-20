@@ -70,6 +70,8 @@ export function Footer({ categories = [] }: FooterProps) {
           <h4>Company</h4>
           <ul>
             <li><Link href="/about">About Us</Link></li>
+            <li><Link href="/editorial-policy">Editorial Policy</Link></li>
+            <li><Link href="/corrections">Corrections</Link></li>
             <li><Link href="/contact">Contact</Link></li>
             <li><Link href="/careers">Careers</Link></li>
             <li><Link href="/advertise">Advertise</Link></li>

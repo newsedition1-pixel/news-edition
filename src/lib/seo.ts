@@ -15,10 +15,10 @@ export const FEED_PATH = '/feed.xml'
 // Publisher logo (rendered by src/app/logo.png/route.tsx, 200x60 — within Google's 600x60 limit).
 export const LOGO = { url: `${siteUrl}/logo.png`, width: 200, height: 60 }
 
+// Only profiles that exist. The About page marks LinkedIn as "coming soon", so no LinkedIn URL is listed.
 export const SAME_AS = [
   'https://newsedition.medium.com',
   'https://t.me/newsedition',
-  'https://www.linkedin.com/company/newsedition-in',
   'https://x.com/NewsEdition_1',
   'https://www.facebook.com/newsedition/',
   'https://www.instagram.com/news_edition1',
@@ -78,6 +78,12 @@ export function articleDescription(opts: { seoDescription?: string | null; excer
   return clip(opts.seoDescription || opts.excerpt || htmlToText(opts.content), 155)
 }
 
+/** True when an article was edited meaningfully after publication (ignores the few seconds between publish and first save). */
+export function wasUpdated(publishedAt?: Date | null, updatedAt?: Date | null, minGapMinutes = 10): boolean {
+  if (!publishedAt || !updatedAt) return false
+  return updatedAt.getTime() - publishedAt.getTime() > minGapMinutes * 60_000
+}
+
 /** Canonical + RSS discovery link. Pages that set `alternates` replace the layout's, so every page must include `types`. */
 export function pageAlternates(canonical: string) {
   return { canonical, types: { 'application/rss+xml': `${siteUrl}${FEED_PATH}` } }
@@ -96,6 +102,8 @@ export function organizationJsonLd() {
     foundingDate: '2024',
     founder: { '@type': 'Person', name: 'Amit Gautam' },
     sameAs: SAME_AS,
+    publishingPrinciples: `${siteUrl}/editorial-policy`,
+    correctionsPolicy: `${siteUrl}/corrections`,
   }
 }
 

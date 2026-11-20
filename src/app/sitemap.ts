@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 
 // Static, evergreen pages. Dates are intentionally omitted: a fake "modified now"
 // teaches Google to ignore lastmod for the whole sitemap.
-const STATIC_PAGES = ['about', 'contact', 'advertise', 'privacy', 'terms']
+const STATIC_PAGES = ['about', 'editorial-policy', 'corrections', 'contact', 'advertise', 'privacy', 'terms']
 
 function latest(a: Date | undefined, b: Date | null | undefined): Date | undefined {
   if (!b) return a

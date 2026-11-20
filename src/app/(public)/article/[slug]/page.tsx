@@ -11,7 +11,7 @@ import { NewsletterSignup } from '@/components/news/NewsletterSignup'
 import { formatDate } from '@/lib/utils'
 import {
   siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, authorPath,
-  articleTitleField, articleDescription, newsArticleJsonLd, breadcrumbJsonLd,
+  articleTitleField, articleDescription, newsArticleJsonLd, breadcrumbJsonLd, wasUpdated,
 } from '@/lib/seo'
 import styles from './page.module.scss'
 import type { ArticleWithRelations } from '@/types'
@@ -31,6 +31,7 @@ async function getArticle(slug: string) {
     seoTitle: articles.seoTitle, seoDescription: articles.seoDescription,
     viewCount: articles.viewCount, publishedAt: articles.publishedAt,
     createdAt: articles.createdAt, updatedAt: articles.updatedAt,
+    isAiGenerated: articles.isAiGenerated,
     categoryId: categories.id, categoryName: categories.name,
     categorySlug: categories.slug, categoryColor: categories.color,
     authorId: users.id, authorName: users.name, authorImage: users.image,
@@ -137,6 +138,7 @@ export default async function ArticlePage({ params }: Props) {
   ])
 
   const articleUrl = `${siteUrl}/article/${slug}`
+  const showUpdated = wasUpdated(article.publishedAt, article.updatedAt)
 
   const jsonLd = newsArticleJsonLd({
     slug,
@@ -217,11 +219,23 @@ export default async function ArticlePage({ params }: Props) {
                       {formatDate(article.publishedAt, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                     </time>
                   )}
+                  {showUpdated && article.updatedAt && (
+                    <time className={styles.date} dateTime={article.updatedAt.toISOString()}>
+                      Updated {formatDate(article.updatedAt, { timeZone: 'Asia/Kolkata' })}
+                    </time>
+                  )}
                 </div>
               </Link>
             )}
             <ShareButtons title={article.title} url={articleUrl} />
           </div>
+
+          {row.isAiGenerated && (
+            <p className={styles.aiNote}>
+              This article was created with the help of AI tools.{' '}
+              <Link href="/editorial-policy">How we use AI</Link>
+            </p>
+          )}
 
           {/* Cover Image */}
           {article.coverImage && (
