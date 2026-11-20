@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { runScheduledArticle } from '@/lib/news/scheduler'
 import { bearerToken, secretMatches } from '@/lib/news/cronAuth'
 import { GITHUB_JWKS_URL, tokenKeyId, verifyGithubOidc, type Jwks, type OidcPolicy } from '@/lib/news/githubOidc'
@@ -53,7 +53,8 @@ async function authorise(request: NextRequest): Promise<{ ok: true } | { ok: fal
  * outside cron service may send `Authorization: Bearer <CRON_SECRET>` (only when that environment
  * variable is set). Publishes at most one article; a run within 20 minutes of the last one does
  * nothing, so two callers cannot double up. `?force=1` skips the "ran recently"
- * guard. Anything other than a clean run returns 200 with a status; only real errors return 5xx.
+ * guard. `?async=1` returns 202 straight away and runs the article after the response (for callers that
+ * hang up after 30 seconds); the result then shows in Admin > News Automation and the function logs. Anything other than a clean run returns 200 with a status; only real errors return 5xx.
  */
 export async function GET(request: NextRequest) {
   const auth = await authorise(request)
@@ -61,8 +62,22 @@ export async function GET(request: NextRequest) {
     console.warn('News schedule: request refused —', auth.reason)
     return NextResponse.json({ error: 'Unauthorised', reason: auth.reason }, { status: 401 })
   }
+  const force = request.nextUrl.searchParams.get('force') === '1'
+  // `?async=1`: answer at once (202) and do the work after the response. Outside cron services give up on a
+  // request after 30 seconds, and one article takes two minutes or more; the work still runs to the end.
+  if (request.nextUrl.searchParams.get('async') === '1') {
+    after(async () => {
+      try {
+        const outcome = await runScheduledArticle({ force })
+        console.log('News schedule (async):', outcome.status, outcome.message)
+      } catch (error) {
+        console.error('News schedule error (async):', error)
+      }
+    })
+    return NextResponse.json({ accepted: true, async: true }, { status: 202 })
+  }
   try {
-    const outcome = await runScheduledArticle({ force: request.nextUrl.searchParams.get('force') === '1' })
+    const outcome = await runScheduledArticle({ force })
     return NextResponse.json(outcome, { status: outcome.status === 'failed' ? 500 : 200 })
   } catch (error) {
     console.error('News schedule error:', error)
