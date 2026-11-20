@@ -18,7 +18,7 @@ NewsEdition articles carry a named author, a publication time and a last-updated
 ## About the publisher
 
 - [About NewsEdition](https://newsedition.in/about): who runs the site and why it exists
-- [Editorial Policy](https://newsedition.in/editorial-policy): who runs the site, how AI tools are used and labelled
+- [Editorial Policy](https://newsedition.in/editorial-policy): who runs the site, how AI tools are used
 - [Corrections Policy](https://newsedition.in/corrections): how to report an error
 - [Grievance Officer](https://newsedition.in/grievance): who handles complaints about content, and how to reach them
 - [Contact](https://newsedition.in/contact): how to reach the newsroom

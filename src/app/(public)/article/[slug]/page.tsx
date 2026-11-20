@@ -231,13 +231,6 @@ export default async function ArticlePage({ params }: Props) {
             <ShareButtons title={article.title} url={articleUrl} />
           </div>
 
-          {row.isAiGenerated && (
-            <p className={styles.aiNote}>
-              This article was created with the help of AI tools.{' '}
-              <Link href="/editorial-policy">How we use AI</Link>
-            </p>
-          )}
-
           {/* Cover Image */}
           {article.coverImage && (
             <figure className={styles.coverImage}>

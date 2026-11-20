@@ -49,8 +49,8 @@ export default function CorrectionsPage() {
         <h2 className={styles.sectionTitle}>Articles written with AI tools</h2>
         <div className={styles.body}>
           <p>
-            Some articles are drafted with AI tools and are labelled as such on the article page. The same
-            process applies to them. Read more in our <Link href="/editorial-policy">Editorial Policy</Link>.
+            Some articles are drafted with AI tools. The same process applies to them. Read more in our{' '}
+            <Link href="/editorial-policy">Editorial Policy</Link>.
           </p>
         </div>
       </div>
