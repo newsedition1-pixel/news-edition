@@ -8,6 +8,8 @@
  *   - copying: no long runs of words lifted from the source (the article must be in our own words)
  *   - grounding: figures and quotation marks must appear in the source text
  *   - style: stock "AI voice" phrases, flat sentence rhythm
+ *   - repetition: same-word sentence openings, stock connectors, repeated information, FAQ answers that restate the article
+ *   - structure: an "Analysis" section (its content is held to the same grounding rules as everything else)
  *   - SEO: title length, focus keyword placement
  * Issues are either `blocking` (the article is retried, then rejected) or `warnings`.
  */
@@ -280,6 +282,108 @@ export function sentenceLengthSpread(text: string): number {
   return Math.sqrt(variance)
 }
 
+const STOPWORDS = new Set([
+  'the', 'and', 'for', 'that', 'this', 'with', 'from', 'have', 'has', 'had', 'was', 'were', 'are', 'but', 'not', 'its', 'their', 'they', 'will',
+  'would', 'could', 'been', 'also', 'than', 'into', 'over', 'such', 'which', 'who', 'whom', 'what', 'when', 'where', 'while', 'said', 'says',
+  'about', 'after', 'before', 'under', 'more', 'most', 'some', 'any', 'all', 'one', 'two', 'out', 'new', 'per', 'cent', 'his', 'her', 'our',
+])
+
+/** Sentences of at least four words, in reading order. */
+export function sentencesOf(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => wordsOf(s).length >= 4)
+}
+
+function contentWords(sentence: string): Set<string> {
+  return new Set(wordsOf(sentence).filter((w) => w.length >= 3 && !STOPWORDS.has(w)))
+}
+
+/** Share of the words two sentences have in common (0 to 1), ignoring small filler words. */
+export function sentenceOverlap(a: string, b: string): number {
+  const x = contentWords(a)
+  const y = contentWords(b)
+  if (x.size < 6 || y.size < 6) return 0
+  let shared = 0
+  for (const w of x) if (y.has(w)) shared++
+  return shared / (x.size + y.size - shared)
+}
+
+const TRANSITION_RE = /^(moreover|furthermore|additionally|in addition|overall|notably|importantly|ultimately|consequently|indeed|thus|hence)\b/i
+
+function snippet(s: string, words = 12): string {
+  const w = s.split(/\s+/)
+  return w.length > words ? `${w.slice(0, words).join(' ')} …` : s
+}
+
+/**
+ * Repeated information and machine-like rhythm: three or more sentences in a row starting with the
+ * same word, stock connectors at the start of sentences, near-duplicate sentences, and FAQ answers
+ * that only restate the article. Mild cases are warnings, clear cases block the article.
+ */
+export function repetitionIssues(bodyText: string, faqs: { question: string; answer: string }[] = []): { blocking: string[]; warnings: string[] } {
+  const blocking: string[] = []
+  const warnings: string[] = []
+  const sentences = sentencesOf(bodyText)
+
+  // Same first word, several sentences in a row.
+  let run = 1
+  let longest = 1
+  let longestWord = ''
+  for (let i = 1; i < sentences.length; i++) {
+    const a = wordsOf(sentences[i - 1])[0]
+    const b = wordsOf(sentences[i])[0]
+    run = a && a === b ? run + 1 : 1
+    if (run > longest) {
+      longest = run
+      longestWord = b
+    }
+  }
+  if (longest >= 5) blocking.push(`${longest} sentences in a row begin with "${longestWord}". Vary how sentences start; never more than two in a row with the same word.`)
+  else if (longest >= 3) warnings.push(`${longest} sentences in a row begin with "${longestWord}".`)
+
+  const connectors = sentences.filter((s) => TRANSITION_RE.test(s))
+  if (connectors.length >= 5) blocking.push(`${connectors.length} sentences open with stock connectors (for example "${snippet(connectors[0], 6)}"). Remove them and let the order of the facts carry the logic.`)
+  else if (connectors.length >= 3) warnings.push(`${connectors.length} sentences open with stock connectors.`)
+
+  // The same information said twice.
+  const pairs: [string, string][] = []
+  for (let i = 0; i < sentences.length; i++) {
+    for (let j = i + 1; j < sentences.length; j++) {
+      if (sentenceOverlap(sentences[i], sentences[j]) >= 0.7) pairs.push([sentences[i], sentences[j]])
+    }
+  }
+  if (pairs.length >= 2) {
+    blocking.push(`The same information is repeated in different sentences, for example: "${snippet(pairs[0][0])}" and "${snippet(pairs[0][1])}". Say each fact once and add something new when a topic returns.`)
+  } else if (pairs.length === 1) {
+    warnings.push(`Two sentences say nearly the same thing: "${snippet(pairs[0][0])}" and "${snippet(pairs[0][1])}".`)
+  }
+
+  // FAQ answers that only restate the article.
+  const restated = faqs.filter((f) => sentencesOf(f.answer).some((a) => sentences.some((s) => sentenceOverlap(a, s) >= 0.75)))
+  if (restated.length >= 4) {
+    blocking.push(`${restated.length} FAQ answers only repeat sentences already in the article (for example the answer to "${snippet(restated[0].question, 8)}"). Each answer must give the direct answer in new words and add clarity.`)
+  } else if (restated.length >= 2) {
+    warnings.push(`${restated.length} FAQ answers repeat sentences from the article.`)
+  }
+
+  return { blocking, warnings }
+}
+
+/** Points (paragraphs and list items) in the "Analysis" section, or null when the article has no such heading. */
+export function analysisPoints(contentHtml: string): number | null {
+  const parts = contentHtml.split(/(<h2\b[^>]*>[\s\S]*?<\/h2>)/i)
+  for (let i = 1; i < parts.length; i += 2) {
+    if (!/^analysis\b/i.test(htmlToText(parts[i]))) continue
+    const section = parts[i + 1] ?? ''
+    const items = (section.match(/<li\b/gi) || []).length
+    const paragraphs = (section.replace(/<li\b[\s\S]*?<\/li>/gi, '').match(/<p\b/gi) || []).length
+    return items + paragraphs
+  }
+  return null
+}
+
 export function assessArticle(input: QualityInput): QualityReport {
   const minWords = input.minWords ?? MIN_WORDS_DEFAULT
   const bodyText = htmlToText(input.contentHtml)
@@ -335,6 +439,19 @@ export function assessArticle(input: QualityInput): QualityReport {
     if (!input.publisherNames.some((n) => opening.includes(n.toLowerCase()))) {
       blocking.push(`None of ${input.publisherNames.join(', ')} is named in the first three paragraphs. Attribute the main facts to the publisher by name, in plain words.`)
     }
+  }
+
+  const repetition = repetitionIssues(bodyText, input.faqs ?? [])
+  blocking.push(...repetition.blocking)
+  warnings.push(...repetition.warnings)
+
+  const analysis = analysisPoints(input.contentHtml)
+  if (analysis === null || analysis === 0) {
+    blocking.push('The article has no analysis section. Add an <h2> that starts with "Analysis" followed by 2 to 3 short analytical points drawn only from facts in the reports (no new facts, figures, names or quotations).')
+  } else if (analysis < 2) {
+    warnings.push(`The analysis section has ${analysis} point; aim for 2 to 3.`)
+  } else if (analysis > 5) {
+    warnings.push(`The analysis section has ${analysis} points; keep it to 2 or 3 strong ones.`)
   }
 
   const h2s = (input.contentHtml.match(/<h2\b/gi) || []).length

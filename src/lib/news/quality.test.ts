@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { aiPhraseHits, assessArticle, copiedPassages, copyStats, extractFigures, extractQuotes, sanitizeArticleHtml, ungroundedProperNouns } from './quality'
+import { aiPhraseHits, analysisPoints, assessArticle, copiedPassages, copyStats, extractFigures, extractQuotes, repetitionIssues, sanitizeArticleHtml, sentenceOverlap, ungroundedProperNouns } from './quality'
 
 const SOURCE = `The Reserve Bank of India kept the repo rate unchanged at 6.5 per cent on Friday, Governor Sanjay Malhotra said after the three day meeting of the monetary policy committee in Mumbai. Retail inflation stood at 4.2 per cent in October, up from 3.7 per cent a month earlier, according to government data. "We will remain watchful on food prices," Malhotra told reporters. The committee voted 5 to 1 to hold rates. Economists at several banks expect no cut before February. Home loan borrowers will see no change in their monthly instalments for now, and the central bank also left the cash reserve ratio at 4 per cent. The bank projected growth of 6.8 per cent for the year.`
 
@@ -25,7 +25,7 @@ function filler(words: number, seed: number): string {
 function goodHtml(extra = ''): string {
   const paras = Array.from({ length: 9 }, (_, i) => `<p>${filler(75, i + 3)}</p>`)
   paras[0] = `<p>The Reserve Bank of India kept its repo rate at 6.5 per cent on Friday, according to The Hindu, leaving home loan instalments unchanged. ${filler(40, 99)}</p>`
-  return `${paras.slice(0, 4).join('')}<h2>What it means for borrowers</h2>${paras.slice(4, 7).join('')}<h2>What comes next</h2>${paras.slice(7).join('')}${extra}`
+  return `${paras.slice(0, 4).join('')}<h2>What it means for borrowers</h2>${paras.slice(4, 6).join('')}<h2>Analysis: why the timing matters</h2>${paras.slice(6, 8).join('')}<h2>What comes next</h2>${paras.slice(8).join('')}${extra}`
 }
 
 const base = {
@@ -144,4 +144,49 @@ test('headings in Title Case do not count as invented names; the copy message na
   assert.equal(report.ungroundedNames.includes('Findings'), false)
   assert.equal(report.ungroundedNames.includes('Hindu'), false)
   assert.ok(report.blocking.some((b) => /copied/.test(b) && /rebuild each one/.test(b)))
+})
+
+test('an article without an Analysis section is blocked, one with a thin section only warns', () => {
+  const none = assessArticle({ ...base, contentHtml: goodHtml().replace('<h2>Analysis: why the timing matters</h2>', '<h2>Why the timing matters</h2>') })
+  assert.equal(none.ok, false)
+  assert.match(none.blocking.join(' '), /no analysis section/)
+  const thin = assessArticle({ ...base, contentHtml: goodHtml().replace(/(<h2>Analysis: why the timing matters<\/h2>)<p>[\s\S]*?<\/p><p>[\s\S]*?<\/p>/, '$1<p>One point only.</p>') })
+  assert.match(thin.warnings.join(' '), /analysis section has 1 point/)
+  assert.ok(!thin.blocking.join(' ').includes('no analysis section'))
+})
+
+test('analysisPoints counts paragraphs and list items under the Analysis heading only', () => {
+  assert.equal(analysisPoints('<p>a</p><h2>Analysis: x</h2><p>one</p><ul><li>two</li><li>three</li></ul><h2>Next</h2><p>four</p>'), 3)
+  assert.equal(analysisPoints('<h2>Overview</h2><p>a</p>'), null)
+  assert.equal(analysisPoints('<h2>Analysis</h2>'), 0)
+})
+
+test('sentences that start the same way in a row, and stock connectors, are flagged', () => {
+  const same = 'The ministry issued the order on Friday morning. The order covers every district in the state. The officials said the rule applies from Monday. The court will hear the plea next week.'
+  assert.match(repetitionIssues(same).warnings.join(' '), /4 sentences in a row begin with "the"/)
+  const five = `${same} The petitioners say the order is unfair to small traders.`
+  assert.match(repetitionIssues(five).blocking.join(' '), /5 sentences in a row/)
+  const connectors = 'Moreover, the order covers every district in the state. Furthermore, the officials said the rule applies from Monday. Additionally, the court will hear the plea next week. Overall, traders are worried about the cost.'
+  assert.match(repetitionIssues(connectors).warnings.join(' '), /stock connectors/)
+  assert.deepEqual(repetitionIssues('Traders fear higher costs after the order. Officials say the rule starts on Monday. A hearing is set for next week in the High Court. Several associations have already written to the minister about it.'), { blocking: [], warnings: [] })
+})
+
+test('repeated information: one near-duplicate pair warns, two block', () => {
+  const a = 'The central bank kept the repo rate unchanged at 6.5 per cent after the three day meeting in Mumbai.'
+  const a2 = 'After the three day meeting in Mumbai the central bank kept the repo rate unchanged at 6.5 per cent.'
+  const b = 'Retail inflation stood at 4.2 per cent in October according to government data released this week.'
+  const b2 = 'Government data released this week showed retail inflation at 4.2 per cent in October.'
+  assert.ok(sentenceOverlap(a, a2) >= 0.7)
+  assert.equal(repetitionIssues(`${a} Borrowers see no change in monthly instalments. ${a2}`).warnings.length, 1)
+  assert.match(repetitionIssues(`${a} ${b} Borrowers see no change in monthly instalments. ${a2} ${b2}`).blocking.join(' '), /repeated in different sentences/)
+})
+
+test('FAQ answers that only restate the article are flagged', () => {
+  const body = 'The central bank kept the repo rate unchanged at 6.5 per cent after the three day meeting in Mumbai. Home loan borrowers will see no change in their monthly instalments for now.'
+  const faqs = [
+    { question: 'Did the repo rate change?', answer: 'The central bank kept the repo rate unchanged at 6.5 per cent after the three day meeting in Mumbai.' },
+    { question: 'Will my EMI change?', answer: 'No. Home loan borrowers will see no change in their monthly instalments for now.' },
+  ]
+  assert.match(repetitionIssues(body, faqs).warnings.join(' '), /2 FAQ answers repeat/)
+  assert.deepEqual(repetitionIssues(body, [{ question: 'Will my EMI change?', answer: 'No, not yet. Instalments stay as they are until the next review.' }]).warnings, [])
 })
