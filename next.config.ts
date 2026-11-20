@@ -33,6 +33,9 @@ const nextConfig: NextConfig = {
       {
         source: '/(.*)',
         headers: [
+          // HSTS: browsers stay on HTTPS for a year. No includeSubDomains/preload on purpose
+          // (those are hard to undo if a subdomain ever lacks HTTPS).
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },

@@ -1,0 +1,35 @@
+# NewsEdition
+
+> NewsEdition is an independent Indian digital news platform founded in 2024 by Amit Gautam (Founder and Editor-in-Chief). It publishes news on India, politics, business, world affairs, entertainment, governance and Haryana, in English.
+
+NewsEdition articles carry a named author, a publication time and a last-updated time. Author pages list each author's published work.
+
+## Sections
+
+- [India](https://newsedition.in/india): national news and updates
+- [World](https://newsedition.in/world): international news and its impact on India
+- [Politics](https://newsedition.in/politics): parties, Parliament, elections and policy
+- [Business](https://newsedition.in/business): markets, economy, companies and startups
+- [Entertainment](https://newsedition.in/entertainment): film, television and culture
+- [Governance](https://newsedition.in/governance): government decisions, schemes and administration
+- [State](https://newsedition.in/state): news from Indian states
+- [Haryana News](https://newsedition.in/haryana-news): local news from Haryana
+
+## About the publisher
+
+- [About NewsEdition](https://newsedition.in/about): who runs the site and why it exists
+- [Contact](https://newsedition.in/contact): how to reach the newsroom
+- [Privacy Policy](https://newsedition.in/privacy)
+- [Terms of Service](https://newsedition.in/terms)
+
+## For crawlers and feeds
+
+- [RSS feed](https://newsedition.in/feed.xml): the 50 newest articles
+- [XML sitemap](https://newsedition.in/sitemap.xml): all published pages
+- [Google News sitemap](https://newsedition.in/news-sitemap.xml): stories from the last two days
+
+## Optional
+
+- [Telegram channel](https://t.me/newsedition)
+- [YouTube](https://www.youtube.com/@newsedition1)
+- [Instagram](https://www.instagram.com/news_edition1)

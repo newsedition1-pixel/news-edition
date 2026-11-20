@@ -9,6 +9,7 @@ import { eq, and, desc } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { ArticleCard } from '@/components/news/ArticleCard'
 import { slugify } from '@/lib/utils'
+import { siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, clip, publisherJsonLd } from '@/lib/seo'
 import styles from './page.module.scss'
 
 interface Props {
@@ -50,11 +51,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params
   const author = await getAuthor(id)
   if (!author) return { title: 'Author Not Found' }
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
+  const name = cleanName(author.name)
+  const url = `${siteUrl}/author/${id}/${slugify(author.name)}`
+  const description = clip(author.bio, 155) || `Read all articles published by ${name} on NewsEdition: latest news, analysis and reports.`
   return {
-    title: author.name,
-    description: author.bio || `All articles published by ${author.name} on NewsEdition`,
-    alternates: { canonical: `${siteUrl}/author/${id}/${slugify(author.name)}` },
+    title: `${name} – Articles & Profile`,
+    description,
+    alternates: pageAlternates(url),
+    openGraph: { type: 'profile', url, siteName: SITE_NAME, locale: SITE_LOCALE, title: `${name} | ${SITE_NAME}`, description },
+    twitter: { card: 'summary', site: TWITTER_HANDLE, title: `${name} | ${SITE_NAME}`, description },
   }
 }
 
@@ -73,7 +78,6 @@ export default async function AuthorPage({ params }: Props) {
   const isOwnProfile = session?.user?.id === author.id
   const initial = author.name.charAt(0).toUpperCase()
   const roleLabel = author.role === 'owner' ? 'Editor-in-Chief' : author.role === 'admin' ? 'Editor' : 'Contributor'
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
   const authorUrl = `${siteUrl}/author/${author.id}/${canonical}`
 
   const sameAs = [author.twitterUrl, author.facebookUrl, author.instagramUrl, author.linkedinUrl, author.websiteUrl].filter(Boolean)
@@ -81,12 +85,13 @@ export default async function AuthorPage({ params }: Props) {
   const personLd = {
     '@context': 'https://schema.org',
     '@type': 'Person',
-    name: author.name,
+    '@id': `${authorUrl}#person`,
+    name: cleanName(author.name),
     url: authorUrl,
     ...(author.image && { image: { '@type': 'ImageObject', url: author.image } }),
     ...(author.bio && { description: author.bio }),
     jobTitle: roleLabel,
-    worksFor: { '@type': 'NewsMediaOrganization', name: 'NewsEdition', url: siteUrl },
+    worksFor: publisherJsonLd(),
     ...(sameAs.length > 0 && { sameAs }),
   }
 
@@ -122,7 +127,7 @@ export default async function AuthorPage({ params }: Props) {
 
         <div className={styles.heroInfo}>
           <div className={styles.nameRow}>
-            <h1 className={styles.name}>{author.name}</h1>
+            <h1 className={styles.name}>{cleanName(author.name)}</h1>
             {isOwnProfile && (
               <Link href="/settings/profile" className={styles.editBtn}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -174,7 +179,7 @@ export default async function AuthorPage({ params }: Props) {
       <div className={styles.divider} />
 
       <h2 className={styles.sectionTitle}>
-        Articles by {author.name}
+        Articles by {cleanName(author.name)}
       </h2>
 
       {authorArticles.length === 0 ? (

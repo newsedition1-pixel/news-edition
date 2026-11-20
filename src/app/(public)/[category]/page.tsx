@@ -7,6 +7,9 @@ import { eq, and, desc, inArray, or } from 'drizzle-orm'
 import { ArticleCard } from '@/components/news/ArticleCard'
 import styles from './page.module.scss'
 import type { ArticleWithRelations } from '@/types'
+import {
+  siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, categoryTitle, categoryDescription, breadcrumbJsonLd,
+} from '@/lib/seo'
 
 interface Props {
   params: Promise<{ category: string }>
@@ -29,15 +32,22 @@ async function getParentCategory(parentId: number) {
   return rows[0] ?? null
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { category: slug } = await params
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+  const [{ category: slug }, { page: pageStr }] = await Promise.all([params, searchParams])
   const cat = await getCategory(slug)
   if (!cat) return { title: 'Category Not Found' }
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
+  const page = Math.max(1, Number(pageStr) || 1)
+  const title = categoryTitle(cat.name, page)
+  const description = categoryDescription(cat.name, cat.description)
+  // Each pagination page is its own canonical (page 2 must not canonicalise to page 1,
+  // or the articles that only appear on page 2+ lose their crawl path).
+  const url = `${siteUrl}/${slug}${page > 1 ? `?page=${page}` : ''}`
   return {
-    title: `${cat.name} News`,
-    description: cat.description || `Latest ${cat.name} news and updates from NewsEdition.`,
-    alternates: { canonical: `${siteUrl}/${slug}` },
+    title,
+    description,
+    alternates: pageAlternates(url),
+    openGraph: { type: 'website', url, siteName: SITE_NAME, locale: SITE_LOCALE, title: `${title} | ${SITE_NAME}`, description },
+    twitter: { card: 'summary_large_image', site: TWITTER_HANDLE, title: `${title} | ${SITE_NAME}`, description },
   }
 }
 
@@ -102,23 +112,22 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
   const hasMore = rows.length === PAGE_SIZE
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in'
   const catUrl = `${siteUrl}/${slug}`
 
-  const breadcrumbItems = [
-    { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
-    ...(parentCat ? [{ '@type': 'ListItem', position: 2, name: parentCat.name, item: `${siteUrl}/${parentCat.slug}` }] : []),
-    { '@type': 'ListItem', position: parentCat ? 3 : 2, name: cat.name, item: catUrl },
-  ]
+  const breadcrumb = breadcrumbJsonLd([
+    { name: 'Home', url: siteUrl },
+    ...(parentCat ? [{ name: parentCat.name, url: `${siteUrl}/${parentCat.slug}` }] : []),
+    { name: cat.name, url: catUrl },
+  ])
 
   const collectionLd = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
-    name: `${cat.name} News`,
-    description: cat.description || `Latest ${cat.name} news and updates from NewsEdition.`,
+    name: categoryTitle(cat.name),
+    description: categoryDescription(cat.name, cat.description),
     url: catUrl,
-    inLanguage: 'en',
-    breadcrumb: { '@type': 'BreadcrumbList', itemListElement: breadcrumbItems },
+    inLanguage: 'en-IN',
+    breadcrumb: { '@type': 'BreadcrumbList', itemListElement: breadcrumb.itemListElement },
     ...(articlesList.length > 0 && {
       mainEntity: {
         '@type': 'ItemList',

@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import Script from 'next/script'
 import { ThemeProvider } from '@/components/layout/ThemeProvider'
 import { PreloadResources } from '@/components/layout/PreloadResources'
+import { FEED_PATH, TWITTER_HANDLE } from '@/lib/seo'
 import './globals.scss'
 
 const inter = Inter({
@@ -20,9 +21,12 @@ export const metadata: Metadata = {
     default: `${siteName} — Breaking News, Latest Updates`,
     template: `%s | ${siteName}`,
   },
-  description: 'Your trusted source for breaking news, in-depth analysis, and comprehensive coverage of events that matter across India and the world.',
-  keywords: ['news', 'India', 'breaking news', 'latest news', 'politics', 'sports', 'business', 'technology'],
+  description: 'Latest India news today: politics, business, world, entertainment and Haryana headlines, updated through the day on NewsEdition.',
+  // No <meta keywords>: Google ignores it, and a generic list ("sports", "technology")
+  // does not describe a site that does not cover those sections.
   authors: [{ name: siteName, url: siteUrl }],
+  // Pages that define their own `alternates` must include this too (see pageAlternates in lib/seo.ts).
+  alternates: { types: { 'application/rss+xml': `${siteUrl}${FEED_PATH}` } },
   creator: siteName,
   publisher: siteName,
   robots: {
@@ -36,13 +40,13 @@ export const metadata: Metadata = {
     url: siteUrl,
     siteName,
     title: `${siteName} — Breaking News, Latest Updates`,
-    description: 'Your trusted source for breaking news and in-depth analysis.',
+    description: 'Latest India news today: politics, business, world, entertainment and Haryana headlines.',
   },
   twitter: {
     card: 'summary_large_image',
     title: siteName,
-    description: 'Your trusted source for breaking news and in-depth analysis.',
-    site: '@newsedition',
+    description: 'Latest India news today: politics, business, world, entertainment and Haryana headlines.',
+    site: TWITTER_HANDLE,
   },
   verification: { google: '8Iz3f_2karh5jShQV1mprOLbpZ_Fvs3ZpOAP1HICFBc' },
 }
