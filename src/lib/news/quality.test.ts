@@ -190,3 +190,17 @@ test('FAQ answers that only restate the article are flagged', () => {
   assert.match(repetitionIssues(body, faqs).warnings.join(' '), /2 FAQ answers repeat/)
   assert.deepEqual(repetitionIssues(body, [{ question: 'Will my EMI change?', answer: 'No, not yet. Instalments stay as they are until the next review.' }]).warnings, [])
 })
+
+test('nationality adjectives, compass words and generic institution words are not invented names', () => {
+  const src = 'The agency said the deal was struck in Helsinki.'
+  const out = 'The agency said the deal struck by the Finnish side and American partners in the northern region went to the Ministry. Officials of the External Affairs Ministry and a Member of Parliament agreed.'
+  assert.deepEqual(ungroundedProperNouns(out, src), [])
+  // A real invented name is still caught next to those words.
+  assert.deepEqual(ungroundedProperNouns('The deal was signed by the American envoy Zorander.', src), ['Zorander'])
+})
+
+test('acronyms are grounded when the source spells them out, and the other way round', () => {
+  assert.deepEqual(ungroundedProperNouns('The DEA said the NIH report was wrong.', 'The Drug Enforcement Administration said the National Institutes of Health report was wrong.'), [])
+  assert.deepEqual(ungroundedProperNouns('The Central Bureau of Investigation said the Drug Enforcement Administration helped.', 'The CBI said the DEA helped.'), [])
+  assert.deepEqual(ungroundedProperNouns('The XYZ said it helped.', 'The agency said it helped.'), ['XYZ'])
+})

@@ -7,7 +7,7 @@ import { extractArticle, type ExtractedArticle } from './articleText'
 const UA = 'Mozilla/5.0 (compatible; NewsEditionBot/1.0; +https://newsedition.in/editorial-policy)'
 const MAX_BYTES = 1_500_000
 
-async function fetchText(url: string, timeoutMs: number): Promise<{ text: string; finalUrl: string } | null> {
+export async function fetchText(url: string, timeoutMs: number): Promise<{ text: string; finalUrl: string } | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {

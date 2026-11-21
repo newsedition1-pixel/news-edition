@@ -116,7 +116,47 @@ export function relevantImages(images: CommonsImage[], subjectTerms: string[]): 
 export function looksLikePlaceholderImage(url: string | null | undefined): boolean {
   if (!url) return true
   const u = url.toLowerCase()
-  return /(logo|placeholder|default[-_.]?(image|og|share|thumb)|favicon|sprite|blank|spacer|1x1|pixel|avatar|icon[-_.]|brand[-_.]?image|no[-_]?image|fallback)/.test(u) || /\.(svg|gif)(\?|$)/.test(u)
+  return (
+    /(logo|placeholder|default[-_.]?(image|og|share|thumb)|favicon|sprite|blank|spacer|1x1|pixel|avatar|icon[-_.]|brand[-_.]?image|no[-_]?image|fallback|masthead|watermark|og[-_.]?(image|default)|social[-_.]?(share|image|card)|share[-_.]?(image|card)|sharing[-_.]?image)/.test(u) ||
+    /\/(theme|themes|static\/(theme|themes|img|images|assets|default))\//.test(u.replace(/^https?:\/\/[^/]+/, '')) ||
+    /\.(svg|gif)(\?|$)/.test(u)
+  )
+}
+
+/** Host + path of an image URL without the query, so the same file compares equal across size and CDN parameters. */
+export function imageKey(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    return `${u.hostname.toLowerCase().replace(/^www\./, '')}${u.pathname.replace(/\/+$/, '')}`
+  } catch {
+    return null
+  }
+}
+
+/**
+ * True when the picture is the publisher's site-wide share image (its logo card), which pages without
+ * a photo of their own fall back to. `siteImageUrl` is the og:image of the publisher's home page.
+ */
+export function isSiteDefaultImage(url: string | null | undefined, siteImageUrl: string | null | undefined): boolean {
+  const a = imageKey(url)
+  const b = imageKey(siteImageUrl)
+  return !!a && !!b && a === b
+}
+
+/** Logos and banners are very wide, very tall or very short; a news photo is none of those. */
+export function looksLikeLogoShape(width: number | null | undefined, height: number | null | undefined): boolean {
+  const w = width ?? 0
+  const h = height ?? 0
+  if (w <= 0 || h <= 0) return false
+  const ratio = w / h
+  return h < 300 || ratio > 3.2 || ratio < 0.5
+}
+
+/** A prompt for the last-resort illustration that image models do not refuse: abstract, no people, nothing violent. */
+export function safeCoverPrompt(categorySlug: string | null | undefined): string {
+  const topic = (categorySlug || 'news').replace(/[-_]+/g, ' ').trim() || 'news'
+  return `A calm, realistic editorial illustration for a ${topic} news story: an abstract symbolic scene with no people, no faces, no text, no logos, no flags and nothing violent.`
 }
 
 export function buildImageCredit(img: CommonsImage): string {

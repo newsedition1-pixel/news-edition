@@ -10,7 +10,8 @@ import { fetchTrustedArticle, type TrustedArticle } from './feeds'
 import { assessArticle, htmlToText, sanitizeArticleHtml, type QualityReport } from './quality'
 import { auditArticle, betterAudit, chooseSeo, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, type AuditMode, type AuditResult, type AuditSummary, type LlmFindings } from './audit'
 import { assembleArticleHtml, primaryDocumentLinks, type ExternalSource } from './links'
-import { buildImageCredit, buildPublisherImageCredit, looksLikePlaceholderImage, searchCommonsImage } from './images'
+import { buildImageCredit, buildPublisherImageCredit, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, safeCoverPrompt, searchCommonsImage } from './images'
+import { publisherSiteImage } from './siteImage'
 import { ensureWatermark, watermarkTransformation } from './watermark'
 import { finalizeSeo, finalizeTags, rankInternalCandidates, type PublishedRow } from './meta'
 import { isTrustedUrl } from './publishers'
@@ -103,6 +104,10 @@ async function storeImage(src: string, uploadedBy: string) {
   if ((result.width ?? 0) < MIN_COVER_WIDTH) {
     await deleteFromCloudinary(result.public_id).catch(() => undefined)
     throw new Error('Image too small to be a news photo')
+  }
+  if (looksLikeLogoShape(result.width, result.height)) {
+    await deleteFromCloudinary(result.public_id).catch(() => undefined)
+    throw new Error(`Image shape ${result.width}x${result.height} looks like a logo or banner, not a news photo`)
   }
   await db.insert(assets).values({
     name: `ai-news-${Date.now()}`,
@@ -252,33 +257,58 @@ type Cover = {
   logoApplied: boolean
 }
 
+/** A short, key-free reason for logs and the admin screen. */
+function reasonOf(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e)
+  return msg.replace(/sk-[A-Za-z0-9_-]+/g, '[key]').replace(/\s+/g, ' ').slice(0, 160)
+}
+
+/** Why each cover step was skipped or failed, so a story without a cover says why. */
 async function pickCover(
   mode: ImageMode,
   article: RewrittenArticle,
   reports: TrustedArticle[],
-  uploadedBy: string
+  uploadedBy: string,
+  notes: string[]
 ): Promise<Cover | null> {
   const licensed = async (): Promise<Cover | null> => {
     const subjects = article.imageSubjects.length ? article.imageSubjects : [article.focusKeyword || article.title]
     const img = await searchCommonsImage(subjects)
-    if (!img) return null
+    if (!img) {
+      notes.push('Wikimedia: no licensed match')
+      return null
+    }
     try {
       const stored = await storeImage(img.url, uploadedBy)
       return { ...stored, alt: img.title.slice(0, 190), creditHtml: buildImageCredit(img), kind: 'commons' }
-    } catch {
+    } catch (e) {
+      notes.push(`Wikimedia: ${reasonOf(e)}`)
       return null
     }
   }
 
   // The news photo: the picture the publisher itself used for the story (credited to the publisher).
+  // A logo, a placeholder or the publisher's site-wide share image is never a news photo.
   const newsPhoto = async (): Promise<Cover | null> => {
     for (const r of reports) {
-      if (!r.imageUrl || looksLikePlaceholderImage(r.imageUrl)) continue
+      const who = r.publisher.name
+      if (!r.imageUrl) {
+        notes.push(`${who}: no photo on the page`)
+        continue
+      }
+      if (looksLikePlaceholderImage(r.imageUrl)) {
+        notes.push(`${who}: logo or placeholder`)
+        continue
+      }
+      if (isSiteDefaultImage(r.imageUrl, await publisherSiteImage(r.publisher))) {
+        notes.push(`${who}: site-wide share image, not a news photo`)
+        continue
+      }
       try {
         const stored = await storeImage(r.imageUrl, uploadedBy)
-        return { ...stored, alt: article.imageAlt, creditHtml: buildPublisherImageCredit(r.publisher.name, r.finalUrl), kind: 'publisher' }
-      } catch {
-        /* try the next report's image */
+        return { ...stored, alt: article.imageAlt, creditHtml: buildPublisherImageCredit(who, r.finalUrl), kind: 'publisher' }
+      } catch (e) {
+        notes.push(`${who}: ${reasonOf(e)}`)
       }
     }
     return null
@@ -290,18 +320,22 @@ async function pickCover(
     if (cover) return cover
   }
 
-  // Last resort so a story never goes out without a cover: a clearly labelled illustration.
-  try {
-    const stored = await storeImage(await generateCoverImage(article.imagePrompt), uploadedBy)
-    return {
-      ...stored,
-      alt: article.imageAlt,
-      creditHtml: '<p><em>Cover image: AI-generated illustration, not a photograph of the event.</em></p>',
-      kind: 'generated',
+  // Last resort so a story never goes out without a cover: a clearly labelled illustration. If the image
+  // model refuses the story's own prompt (violence, real people), try once more with a neutral one.
+  for (const prompt of [article.imagePrompt, safeCoverPrompt(article.categorySlug)]) {
+    try {
+      const stored = await storeImage(await generateCoverImage(prompt), uploadedBy)
+      return {
+        ...stored,
+        alt: article.imageAlt,
+        creditHtml: '<p><em>Cover image: AI-generated illustration, not a photograph of the event.</em></p>',
+        kind: 'generated',
+      }
+    } catch (e) {
+      notes.push(`Illustration: ${reasonOf(e)}`)
     }
-  } catch {
-    return null
   }
+  return null
 }
 
 async function loadPublished(): Promise<PublishedRow[]> {
@@ -326,13 +360,15 @@ export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptio
   const chosen = chooseSeo(finalSeo, llm?.seo, article.focusKeyword)
   const seo = chosen.replaced ? { ...finalSeo, seoTitle: chosen.seoTitle, seoDescription: chosen.seoDescription } : finalSeo
 
-  const cover = await pickCover(opts.imageMode, article, reports, opts.uploadedBy)
+  const coverNotes: string[] = []
+  const cover = await pickCover(opts.imageMode, article, reports, opts.uploadedBy, coverNotes)
+  if (!cover) console.warn(`No cover image for "${article.title.slice(0, 80)}": ${coverNotes.join(' | ')}`)
   const warnings = [...report.warnings]
   if (cover && !cover.logoApplied) warnings.push('The NewsEdition logo could not be added to the cover image.')
 
   // Auto-publish is only safe for articles with nothing left to doubt: hold the rest for an editor.
   let holdReason: string | null = null
-  if (!cover) holdReason = 'no cover image could be saved'
+  if (!cover) holdReason = `no cover image could be saved (${coverNotes.join('; ').slice(0, 300)})`
   else if (report.ungroundedNames.length >= 3) holdReason = `names that are not in the source reports (${report.ungroundedNames.slice(0, 4).join(', ')})`
   // The audit verdict on the text decides; the cover and links only change the SEO and Discover parts of the score.
   else if (draftAudit && mode === 'enforce' && draftAudit.decision !== 'PUBLISH') {

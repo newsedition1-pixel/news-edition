@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { countWords, extractArticle } from './articleText'
+import { countWords, extractArticle, socialImageOf } from './articleText'
 
 const para = (n: number) => `<p>${Array.from({ length: 30 }, (_, i) => `word${n}x${i}`).join(' ')}.</p>`
 const PAGE = `<html><head>
@@ -41,4 +41,10 @@ test('a short gated page is flagged as paywalled', () => {
 test('countWords ignores markup', () => {
   assert.equal(countWords('<p>one two <b>three</b></p>'), 3)
   assert.equal(countWords(''), 0)
+})
+
+test('socialImageOf gives the og:image, else twitter:image, as an absolute URL', () => {
+  assert.equal(socialImageOf('<meta property="og:image" content="/img/a.jpg">', 'https://www.example.com/news/x'), 'https://www.example.com/img/a.jpg')
+  assert.equal(socialImageOf('<meta name="twitter:image" content="https://cdn.example.com/b.jpg">', 'https://www.example.com/'), 'https://cdn.example.com/b.jpg')
+  assert.equal(socialImageOf('<html></html>', 'https://www.example.com/'), null)
 })
