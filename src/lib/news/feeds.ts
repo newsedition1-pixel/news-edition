@@ -72,7 +72,8 @@ export interface DiscoverResult {
 /** Latest stories from the trusted publishers, clustered by story and ranked. */
 export async function discoverStories(hint = ''): Promise<DiscoverResult> {
   const [perPublisher, trends] = await Promise.all([
-    Promise.all(PUBLISHERS.map((p) => loadPublisherFeeds(p).then((items) => ({ p, items })))),
+    // A publisher with no feed (blocked, see publishers.ts) is not polled and not reported as failed.
+    Promise.all(PUBLISHERS.filter((p) => p.feeds.length > 0).map((p) => loadPublisherFeeds(p).then((items) => ({ p, items })))),
     fetchText(TRENDS_FEED, 6000),
   ])
   const items = perPublisher.flatMap((x) => x.items)

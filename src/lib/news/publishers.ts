@@ -15,7 +15,10 @@ export interface Publisher {
   name: string
   /** Hostnames (and their subdomains) that belong to this publisher. */
   hosts: string[]
-  /** Public RSS feed URLs. A feed that fails to load is skipped, never fatal. */
+  /**
+   * Public RSS feed URLs. A feed that fails to load is skipped, never fatal. An empty list means the
+   * publisher is trusted (its links count as sources and may be read) but its feed is not polled.
+   */
   feeds: string[]
 }
 
@@ -74,7 +77,9 @@ export const PUBLISHERS: Publisher[] = [
     key: 'business-standard',
     name: 'Business Standard',
     hosts: ['business-standard.com'],
-    feeds: ['https://www.business-standard.com/rss/latest.rss'],
+    // Not polled: the feed https://www.business-standard.com/rss/latest.rss answers HTTP 403 to
+    // Vercel's servers (seen in the production logs on 21 Nov 2026, every run).
+    feeds: [],
   },
   {
     key: 'india-today',
@@ -86,7 +91,9 @@ export const PUBLISHERS: Publisher[] = [
     key: 'news18',
     name: 'News18',
     hosts: ['news18.com'],
-    feeds: ['https://www.news18.com/commonfeeds/v1/eng/rss/text.xml'],
+    // Not polled: https://www.news18.com/commonfeeds/v1/eng/rss/text.xml answers HTTP 403 to
+    // Vercel's servers (21 Nov 2026). Put the feed back here if the publisher stops blocking us.
+    feeds: [],
   },
   {
     key: 'scroll',

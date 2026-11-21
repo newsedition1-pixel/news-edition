@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isPrimarySourceUrl, isTrustedUrl, publisherForUrl } from './publishers'
+import { PUBLISHERS, isPrimarySourceUrl, isTrustedUrl, publisherForUrl } from './publishers'
 
 test('trusted publishers match their host and subdomains only', () => {
   assert.equal(publisherForUrl('https://www.thehindu.com/news/national/x.ece')?.key, 'the-hindu')
@@ -25,4 +25,21 @@ test('official document hosts are recognised', () => {
   assert.equal(isPrimarySourceUrl('https://www.who.int/news/item/1'), true)
   assert.equal(isPrimarySourceUrl('https://example.com/gov.in'), false)
   assert.equal(isPrimarySourceUrl('https://notgov.in.example.com/'), false)
+})
+
+test('a publisher without a polled feed is still a trusted source', () => {
+  // Business Standard and News18 block Vercel's servers (HTTP 403), so their feeds are not polled.
+  for (const key of ['business-standard', 'news18']) {
+    const p = PUBLISHERS.find((x) => x.key === key)
+    assert.ok(p, key)
+    assert.deepEqual(p.feeds, [])
+  }
+  assert.equal(publisherForUrl('https://www.business-standard.com/economy/news/x-1.html')?.key, 'business-standard')
+  assert.equal(isTrustedUrl('https://www.news18.com/india/x-1.html'), true)
+})
+
+test('every other publisher has https feeds', () => {
+  const polled = PUBLISHERS.filter((p) => p.feeds.length > 0)
+  assert.ok(polled.length >= 9)
+  for (const p of polled) for (const f of p.feeds) assert.ok(f.startsWith('https://'), `${p.key}: ${f}`)
 })
