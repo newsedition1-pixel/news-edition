@@ -271,6 +271,10 @@ Every article that goes live is shared on social media by `shareArticle()` (`lib
 - **Log** (`settings.socialPostLog`, `lib/social/log.ts`): last 60 shares with the result per platform; an article already shared for real is never posted again, and a failed platform is not retried automatically (avoids doubles). Secrets are scrubbed from stored errors.
 - Tests: `npm test` covers composing, hashtags, policy, log, OAuth signing and every sender with a fake `fetch`. Not covered: live calls to the platforms.
 
+## Reel assets (`GET /api/reel-asset/{slug}`)
+
+Read-only helper for the automatic daily Reel (a scheduled task outside this repo, see the Reel notes in the project docs). The task can read Vercel pages only as text, so this route returns JSON for a *published* article: title, URL, category, the cover credit as plain text (`coverCredit`, read from the `Cover image:` line by `lib/reel/asset.ts`), `coverKind` (`photo` | `ai` | `none`) and, for a credited photo only, a 1080x640 copy of the cover as base64 (a Cloudinary variant). An AI illustration or a cover with no credit line is never sent: the Reel then has no picture. Tests: `lib/reel/asset.test.ts`.
+
 ## Admin Panel
 
 Access: `/admin` — requires `admin` or `owner` role.
