@@ -7,7 +7,8 @@ import { extractArticle, type ExtractedArticle } from './articleText'
 const UA = 'Mozilla/5.0 (compatible; NewsEditionBot/1.0; +https://newsedition.in/editorial-policy)'
 const MAX_BYTES = 1_500_000
 
-export async function fetchText(url: string, timeoutMs: number): Promise<{ text: string; finalUrl: string } | null> {
+/** `why` (optional) is filled with a short reason when the fetch fails, for the runtime log. */
+export async function fetchText(url: string, timeoutMs: number, why?: { reason?: string }): Promise<{ text: string; finalUrl: string } | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -17,20 +18,36 @@ export async function fetchText(url: string, timeoutMs: number): Promise<{ text:
       redirect: 'follow',
       cache: 'no-store',
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      if (why) why.reason = `HTTP ${res.status}`
+      return null
+    }
     const text = (await res.text()).slice(0, MAX_BYTES)
     return { text, finalUrl: res.url || url }
-  } catch {
+  } catch (e) {
+    if (why) why.reason = e instanceof Error && e.name === 'AbortError' ? `no answer within ${timeoutMs} ms` : e instanceof Error ? e.message.slice(0, 80) : 'network error'
     return null
   } finally {
     clearTimeout(timer)
   }
 }
 
+/** One feed, with a single longer retry after a timeout or a server error. Returns why it failed, if it did. */
+async function loadFeed(url: string): Promise<{ page: { text: string; finalUrl: string } | null; reason?: string }> {
+  const why: { reason?: string } = {}
+  let page = await fetchText(url, 8000, why)
+  if (!page && (why.reason?.startsWith('no answer') || /^HTTP 5/.test(why.reason ?? ''))) {
+    page = await fetchText(url, 15000, why)
+  }
+  return { page, reason: page ? undefined : why.reason }
+}
+
 async function loadPublisherFeeds(p: Publisher): Promise<StoryItem[]> {
-  const results = await Promise.all(p.feeds.map((f) => fetchText(f, 8000)))
-  const unloaded = p.feeds.filter((_, i) => !results[i])
-  if (unloaded.length > 0) console.warn(`Feed not loaded (${p.name}): ${unloaded.join(' ')}`)
+  const loaded = await Promise.all(p.feeds.map((f) => loadFeed(f)))
+  const results = loaded.map((l) => l.page)
+  const unloaded = p.feeds.map((f, i) => ({ f, reason: loaded[i].reason })).filter((_, i) => !results[i])
+  // The reason (HTTP 403, timeout ...) tells a blocked feed from a slow or moved one.
+  if (unloaded.length > 0) console.warn(`Feed not loaded (${p.name}): ${unloaded.map((u) => `${u.f} [${u.reason ?? 'unknown'}]`).join(' ')}`)
   const items: StoryItem[] = []
   const seen = new Set<string>()
   for (const r of results) {
