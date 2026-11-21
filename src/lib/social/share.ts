@@ -107,7 +107,8 @@ export async function shareArticle(id: number, opts: { strength?: number } = {})
         xNote = { format: 'skip', link: false, image: false, reason: plan.reason }
       } else {
         const { draft } = await writeXDraft(article, plan.format === 'poll')
-        const composed = composeXPost({ article, draft, plan })
+        // `plan.format` is narrowed to post | poll here, but the object itself is not, so hand over the three fields.
+        const composed = composeXPost({ article, draft, plan: { format: plan.format, link: plan.link, image: plan.image } })
         xPost = composed
         xNote = { format: plan.format, link: plan.link, image: !!composed.imageUrl, reason: plan.reason, copy: composed.copy }
       }
