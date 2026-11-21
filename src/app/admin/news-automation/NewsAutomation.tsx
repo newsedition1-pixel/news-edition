@@ -219,8 +219,8 @@ export function NewsAutomation({ defaultWordLength, defaultAutoPublish }: { defa
         </div>
 
         <p className={styles.hintNote}>
-          Stories come from the public feeds of trusted publishers (The Hindu, Indian Express, Hindustan Times, NDTV, Times of India, Business Standard,
-          India Today, News18, Scroll, BBC, Al Jazeera). The AI works from the full text of up to three reports, never from a headline alone. An
+          Stories come from the public feeds of trusted publishers (The Hindu, Indian Express, Hindustan Times, NDTV, Times of India,
+          India Today, Scroll, BBC, Al Jazeera). The AI works from the full text of up to three reports, never from a headline alone. An
           article that fails the fact, copy or 600-word check is skipped, not saved. Duplicates are skipped automatically.
         </p>
       </div>
