@@ -108,6 +108,12 @@ function linksFromFragment(fragment: string, base: string): { url: string; text:
 
 const PAYWALL_RE = /(subscribe to (continue|read)|already a subscriber|sign in to read|become a member to read|premium (article|content)|this article is (available )?(only )?for (subscribers|members)|to continue reading)/i
 
+/** The page's own share image (og:image, else twitter:image) as an absolute URL, or null. */
+export function socialImageOf(html: string, pageUrl: string): string | null {
+  const raw = metaContent(html, 'og:image') || metaContent(html, 'twitter:image')
+  return raw ? absolute(raw, pageUrl) : null
+}
+
 export function extractArticle(html: string, pageUrl: string): ExtractedArticle {
   let paragraphs: string[] = []
 
@@ -131,13 +137,12 @@ export function extractArticle(html: string, pageUrl: string): ExtractedArticle 
 
   const text = paragraphs.join('\n\n')
   const wordCount = countWords(text)
-  const imageRaw = metaContent(html, 'og:image') || metaContent(html, 'twitter:image')
 
   return {
     text,
     paragraphs,
     wordCount,
-    imageUrl: imageRaw ? absolute(imageRaw, pageUrl) : null,
+    imageUrl: socialImageOf(html, pageUrl),
     imageCredit: null,
     description: metaContent(html, 'og:description') || metaContent(html, 'description'),
     links: linksFromFragment(fragment, pageUrl),

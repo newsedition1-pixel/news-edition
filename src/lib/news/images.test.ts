@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildImageCredit, classifyLicense, looksLikePlaceholderImage, parseCommonsPages, relevantImages } from './images'
+import { buildImageCredit, classifyLicense, imageKey, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, parseCommonsPages, relevantImages, safeCoverPrompt } from './images'
 
 const meta = (license: string, artist = 'Jane <a href="x">Doe</a>', description = 'Narendra Modi addressing a rally in Hisar') => ({
   LicenseShortName: { value: license },
@@ -61,4 +61,40 @@ test('site logos, placeholders and vector/gif images are not news photos', () =>
   assert.equal(looksLikePlaceholderImage('https://example.com/a/b.svg?x=1'), true)
   assert.equal(looksLikePlaceholderImage(null), true)
   assert.equal(looksLikePlaceholderImage('https://th-i.thgim.com/public/incoming/abc123/article9999.ece/alternates/LANDSCAPE_1200/IMG_Rate.jpg'), false)
+})
+
+test('theme and static asset paths and share-image names are placeholders, real photo paths are not', () => {
+  assert.equal(looksLikePlaceholderImage('https://th.thgim.com/static/theme/default/base/img/thehindu-share.png'), true)
+  assert.equal(looksLikePlaceholderImage('https://www.example.com/theme/images/default.jpg'), true)
+  assert.equal(looksLikePlaceholderImage('https://www.example.com/images/og-image.jpg'), true)
+  assert.equal(looksLikePlaceholderImage('https://www.example.com/assets/masthead-1200.jpg'), true)
+  assert.equal(looksLikePlaceholderImage('https://th.thgim.com/news/national/pm-modi/article12345.ece/alternates/LANDSCAPE_1200/Modi.jpg'), false)
+  assert.equal(looksLikePlaceholderImage('https://images.scroll.in/large/static/uploads/2026/11/court.jpg'), false)
+  assert.equal(looksLikePlaceholderImage('https://static.toiimg.com/thumb/msid-123/123.jpg'), false)
+})
+
+test('the publisher site-wide share image is recognised whatever its query string', () => {
+  assert.equal(imageKey('https://www.thehindu.com/img/share.jpg?w=1200'), 'thehindu.com/img/share.jpg')
+  assert.equal(isSiteDefaultImage('https://thehindu.com/img/share.jpg?x=1', 'https://www.thehindu.com/img/share.jpg'), true)
+  assert.equal(isSiteDefaultImage('https://thehindu.com/img/story-photo.jpg', 'https://www.thehindu.com/img/share.jpg'), false)
+  assert.equal(isSiteDefaultImage('https://thehindu.com/img/share.jpg', null), false)
+  assert.equal(isSiteDefaultImage(null, 'https://www.thehindu.com/img/share.jpg'), false)
+})
+
+test('logo and banner shapes are rejected, news photo shapes are kept', () => {
+  assert.equal(looksLikeLogoShape(1200, 675), false)
+  assert.equal(looksLikeLogoShape(1200, 630), false)
+  assert.equal(looksLikeLogoShape(800, 1000), false)
+  assert.equal(looksLikeLogoShape(1600, 300 - 1), true)
+  assert.equal(looksLikeLogoShape(2400, 600), true)
+  assert.equal(looksLikeLogoShape(600, 1400), true)
+  assert.equal(looksLikeLogoShape(null, null), false)
+})
+
+test('the neutral illustration prompt has no people, no text and names the desk', () => {
+  const p = safeCoverPrompt('world-news')
+  assert.match(p, /world news/)
+  assert.match(p, /no people/)
+  assert.match(p, /no text/)
+  assert.match(safeCoverPrompt(null), /news story/)
 })

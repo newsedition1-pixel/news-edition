@@ -186,6 +186,11 @@ const COMMON_CAPS = new Set([
   'if', 'as', 'at', 'in', 'on', 'of', 'to', 'by', 'from', 'both', 'each', 'some', 'many', 'most', 'one', 'two', 'three',
   'government', 'minister', 'court', 'police', 'party', 'state', 'centre', 'union', 'prime', 'chief', 'supreme', 'high',
   'english', 'hindi', 'faq', 'q', 'a', 'no', 'yes', 'not', 'however', 'meanwhile', 'instead', 'for',
+  // Nationality adjectives, compass words and generic institution words say nothing about who or what a story names.
+  'american', 'americans', 'america', 'british', 'chinese', 'russian', 'ukrainian', 'finnish', 'japanese', 'pakistani', 'bangladeshi',
+  'israeli', 'iranian', 'french', 'german', 'european', 'african', 'asian', 'western', 'eastern', 'northern', 'southern', 'north',
+  'south', 'east', 'west', 'central', 'national', 'international', 'global', 'federal', 'ministry', 'department', 'parliament',
+  'member', 'members', 'council', 'committee', 'commission', 'authority', 'board', 'bank', 'external', 'affairs',
 ])
 
 /** Spelling out an abbreviation that the source uses is not an invented name ("UN" -> "United Nations"). */
@@ -209,6 +214,41 @@ const EXPANSIONS: Record<string, string[]> = {
   aap: ['aam', 'aadmi', 'party'],
 }
 
+const SMALL_WORDS = new Set(['of', 'and', 'for', 'the', 'in', 'on', 'to', 'a', 'an'])
+
+/** The initials of every run of 2 to 6 consecutive words ("central bureau of investigation" -> "cbi"). */
+function initialRuns(words: string[]): Set<string> {
+  const runs = new Set<string>()
+  for (let i = 0; i < words.length; i++) {
+    let initials = ''
+    for (let j = i, taken = 0; j < words.length && taken < 6; j++) {
+      if (SMALL_WORDS.has(words[j])) continue
+      initials += words[j][0]
+      taken++
+      if (taken >= 2) runs.add(initials)
+    }
+  }
+  return runs
+}
+
+/** Words of `outputWords` that spell out an acronym the source uses ("Drug Enforcement Administration" for "DEA"). */
+function wordsSpellingSourceAcronyms(outputWords: string[], sourceText: string): Set<string> {
+  const acronyms = new Set((sourceText.match(/\b[A-Z]{2,6}\b/g) ?? []).map((a) => a.toLowerCase()))
+  const covered = new Set<string>()
+  if (acronyms.size === 0) return covered
+  for (let i = 0; i < outputWords.length; i++) {
+    const picked: string[] = []
+    let initials = ''
+    for (let j = i; j < outputWords.length && picked.length < 6; j++) {
+      if (SMALL_WORDS.has(outputWords[j])) continue
+      picked.push(outputWords[j])
+      initials += outputWords[j][0]
+      if (picked.length >= 2 && acronyms.has(initials)) for (const w of picked) covered.add(w)
+    }
+  }
+  return covered
+}
+
 /** Capitalised words in mid-sentence (names of people, places, organisations) that never appear in the source. */
 export function ungroundedProperNouns(outputText: string, sourceText: string, extraAllowed: string[] = []): string[] {
   // Source words with and without a trailing possessive ("Cox's" counts as "Cox").
@@ -219,6 +259,9 @@ export function ungroundedProperNouns(outputText: string, sourceText: string, ex
     for (const full of EXPANSIONS[w] ?? []) srcWords.add(full)
   }
   const allowed = new Set([...extraAllowed.flatMap((s) => wordsOf(s))])
+  for (const w of wordsSpellingSourceAcronyms(wordsOf(outputText), sourceText)) allowed.add(w)
+  // An acronym in the output (DEA, NIH) is grounded when the source spells it out.
+  const sourceInitials = initialRuns(wordsOf(sourceText))
   const found = new Set<string>()
   const sentences = outputText.split(/(?<=[.!?])\s+|\n+/)
   for (const s of sentences) {
@@ -227,6 +270,7 @@ export function ungroundedProperNouns(outputText: string, sourceText: string, ex
       const w = tokens[i].replace(/^[("'“‘]+|[)"'”’.,;:!?]+$/g, '').replace(/['’]s$/, '')
       if (!/^[A-Z][a-zA-Z]{2,}$/.test(w)) continue
       const lw = w.toLowerCase()
+      if (/^[A-Z]{2,6}s?$/.test(w) && sourceInitials.has(lw.replace(/s$/, ''))) continue
       if (MONTHS.has(lw) || COMMON_CAPS.has(lw) || allowed.has(lw) || srcWords.has(lw)) continue
       found.add(w)
     }
