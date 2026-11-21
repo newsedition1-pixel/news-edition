@@ -5,19 +5,21 @@ import { getScheduleStatus } from '@/lib/news/scheduler'
 import { NewsAutomation } from './NewsAutomation'
 import { ScheduleCard } from './ScheduleCard'
 import { SocialCard } from './SocialCard'
+import { ReplyDeskCard } from './ReplyDeskCard'
 import { CoverageCard } from './CoverageCard'
 import { AuditCard } from './AuditCard'
 import { getAuditLog } from '@/lib/news/auditDb'
 import { parseAuditMode } from '@/lib/news/audit'
 import { getCoverageStatus } from '@/lib/news/coverage'
 import { getSocialStatus } from '@/lib/social/share'
+import { getReplyStatus } from '@/lib/social/xinbox'
 import styles from './page.module.scss'
 
 export const metadata: Metadata = { title: 'News Automation' }
 
 export default async function NewsAutomationPage() {
   await requireAdmin()
-  const [defaultWordLength, defaultAutoPublish, schedule, social, coverage, auditLog] = await Promise.all([getNewsWordLength(), getNewsAutoPublish(), getScheduleStatus(), getSocialStatus(), getCoverageStatus(), getAuditLog()])
+  const [defaultWordLength, defaultAutoPublish, schedule, social, replies, coverage, auditLog] = await Promise.all([getNewsWordLength(), getNewsAutoPublish(), getScheduleStatus(), getSocialStatus(), getReplyStatus(), getCoverageStatus(), getAuditLog()])
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -30,6 +32,7 @@ export default async function NewsAutomationPage() {
       <CoverageCard rows={coverage} />
       <AuditCard log={auditLog} mode={parseAuditMode(process.env.NEWS_AUDIT_MODE)} />
       <SocialCard initial={social} />
+      <ReplyDeskCard initial={replies} />
       <NewsAutomation defaultWordLength={defaultWordLength} defaultAutoPublish={defaultAutoPublish} />
     </div>
   )

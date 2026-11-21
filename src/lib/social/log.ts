@@ -14,6 +14,18 @@ export interface ChannelResult {
   error?: string
   /** Why nothing was sent (not configured, not a top story, AI cover, preview only). */
   skipped?: string
+  /** Sent, but not exactly as planned (for example the picture could not be attached). */
+  note?: string
+}
+
+/** What the X planner decided for an article (lib/social/xplan.ts) and how the tweet was written. */
+export interface XNote {
+  format: 'skip' | 'post' | 'poll' | 'video'
+  link: boolean
+  image: boolean
+  reason: string
+  /** "ai": hook and key fact written by the model and checked against the article; "plain": headline and summary. */
+  copy?: 'ai' | 'plain'
 }
 
 export interface ShareEntry {
@@ -25,6 +37,8 @@ export interface ShareEntry {
   top: boolean
   reason: string
   results: Record<string, ChannelResult>
+  /** The X decision; absent in entries written before 22 Nov 2026. */
+  x?: XNote
   /** Only kept for previews, so the admin can read what would have been posted. */
   captions?: Record<string, string>
 }
