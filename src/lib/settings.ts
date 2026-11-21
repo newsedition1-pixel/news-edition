@@ -19,6 +19,9 @@ export const SOCIAL_MODE_KEY = 'socialAutoPost'
 export type SocialMode = 'off' | 'dry' | 'on'
 /** What was shared, as JSON (see lib/social/log.ts). */
 export const SOCIAL_LOG_KEY = 'socialPostLog'
+/** X replies: counters and the answers sent (see lib/social/xreplies.ts), and the reply desk's open items. */
+export const X_REPLY_STATE_KEY = 'xReplyState'
+export const X_REPLY_DESK_KEY = 'xReplyDesk'
 /** Recent pre-publication audits, as JSON (see lib/news/auditLog.ts). */
 export const NEWS_AUDIT_LOG_KEY = 'newsAuditLog'
 export const DEFAULT_NEWS_WORD_LENGTH = 800

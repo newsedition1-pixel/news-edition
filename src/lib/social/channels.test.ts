@@ -74,7 +74,7 @@ test('Telegram reports why a message failed', async () => {
 
 test('X posts the text with an OAuth header and returns the id', async () => {
   const f = fake(() => ({ status: 201, body: { data: { id: '1850', text: 'x' } } }))
-  const r = await sendX(cfg.x, post, { fetch: f.fetch })
+  const r = await sendX(cfg.x, { ...post, imageUrl: null }, { fetch: f.fetch })
   assert.deepEqual(r, { ok: true, ref: '1850' })
   assert.equal(f.calls[0].url, 'https://api.x.com/2/tweets')
   assert.ok(f.calls[0].headers.Authorization.startsWith('OAuth '))
@@ -83,7 +83,7 @@ test('X posts the text with an OAuth header and returns the id', async () => {
 
 test('X says so when the credits are used up', async () => {
   const f = fake(() => ({ status: 402, body: { title: 'CreditsDepleted' } }))
-  const r = await sendX(cfg.x, post, { fetch: f.fetch })
+  const r = await sendX(cfg.x, { ...post, imageUrl: null }, { fetch: f.fetch })
   assert.equal(r.ok, false)
   assert.match(r.error ?? '', /credits/)
 })

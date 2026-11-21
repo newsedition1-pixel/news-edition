@@ -19,6 +19,12 @@ export interface ArticleForSocial {
   content?: string | null
 }
 
+/** A poll attached to a tweet (X takes 2 to 4 options of at most 25 characters, open for 5 minutes to 7 days). */
+export interface XPoll {
+  options: string[]
+  durationMinutes: number
+}
+
 export interface ComposedPost {
   /** What is posted (Telegram: HTML, others: plain text). */
   text: string
@@ -26,6 +32,8 @@ export interface ComposedPost {
   /** The link the platform should attach (Facebook link card). Null when the text already carries it or none is wanted. */
   link: string | null
   imageUrl: string | null
+  /** X only: the tweet is a poll (and then carries no picture). */
+  poll?: XPoll | null
 }
 
 export interface ComposedSet {

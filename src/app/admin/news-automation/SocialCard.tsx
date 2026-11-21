@@ -10,6 +10,7 @@ export interface SocialStatusData {
   channels: { name: string; configured: boolean; who: string; needs: string[] }[]
   xLinkMode: 'always' | 'top' | 'never'
   today: { top: number; cap: number }
+  x: { mode: 'growth' | 'legacy'; posts: number; cap: number; links: number; linkCap: number; polls: number; pollCap: number }
   recent: {
     id: number
     title: string
@@ -17,8 +18,9 @@ export interface SocialStatusData {
     dry: boolean
     top: boolean
     reason: string
-    results: Record<string, { ok: boolean; ref?: string; error?: string; skipped?: string }>
+    results: Record<string, { ok: boolean; ref?: string; error?: string; skipped?: string; note?: string }>
     captions?: Record<string, string>
+    x?: { format: 'skip' | 'post' | 'poll' | 'video'; link: boolean; image: boolean; reason: string; copy?: 'ai' | 'plain' }
   }[]
 }
 
@@ -34,9 +36,9 @@ function formatWhen(iso: string): string {
   return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }).format(new Date(iso))
 }
 
-function resultText(r: { ok: boolean; error?: string; skipped?: string } | undefined): string {
+function resultText(r: { ok: boolean; error?: string; skipped?: string; note?: string } | undefined): string {
   if (!r) return '–'
-  if (r.ok) return 'posted'
+  if (r.ok) return r.note ? `posted (${r.note})` : 'posted'
   if (r.skipped) return r.skipped
   return `failed: ${r.error ?? 'unknown error'}`
 }
@@ -81,9 +83,11 @@ export function SocialCard({ initial }: { initial: SocialStatusData }) {
         </div>
       </div>
       <p className={styles.note}>
-        Each article goes out with its headline, a short summary and a few hashtags. Telegram and X get every article; Instagram and Facebook get the top stories only
+        Each article goes out with its headline, a short summary and a few hashtags. Telegram gets every article; Instagram and Facebook get the top stories only
         (up to {status.today.cap} a day between 7:00 and 23:00 IST, spread over the day; {status.today.top} chosen today).
-        {status.xLinkMode === 'always' ? ' Tweets carry the article link.' : status.xLinkMode === 'top' ? ' Tweets carry the article link only for top stories (a tweet with a link costs far more on the X API).' : ' Tweets do not carry a link.'}
+        {status.x.mode === 'growth'
+          ? ` X is in growth mode: the best stories only (${status.x.posts} of ${status.x.cap} tweets today), each with a hook and one checked fact, a photo when the cover is a real photo, and one poll a day in the evening (${status.x.polls} of ${status.x.pollCap} today). Links are kept for ${status.x.linkCap} tweets a day (${status.x.links} so far), because a tweet with a link costs far more on the X API.`
+          : ' X is in legacy mode: every article is tweeted.'}
         {' '}Preview only writes the posts below without sending anything.
       </p>
       <table className={styles.table}>
@@ -114,6 +118,11 @@ export function SocialCard({ initial }: { initial: SocialStatusData }) {
                   <li key={name}>{LABEL[name] ?? name}: {resultText(r)}</li>
                 ))}
               </ul>
+              {e.x && (
+                <p className={styles.note}>
+                  X plan: {e.x.format}{e.x.link ? ' + link' : ''}{e.x.image ? ' + photo' : ''}{e.x.copy ? ` · ${e.x.copy === 'ai' ? 'written copy' : 'plain copy'}` : ''} ({e.x.reason})
+                </p>
+              )}
               {e.captions && Object.entries(e.captions).map(([name, text]) => (
                 <p key={name} className={styles.note}><strong>{LABEL[name] ?? name}</strong><br /><span style={{ whiteSpace: 'pre-wrap' }}>{text}</span></p>
               ))}

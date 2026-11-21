@@ -1,0 +1,37 @@
+name: X video
+
+# One vertical news video a day for X: asks the site for a recent story with a credited photo,
+# renders the video (same look as the daily Reel: photo with credit, headline, three points, original
+# music) and uploads it to /api/social/x-video, which posts it. Like news-schedule.yml, no secret is
+# needed: the run proves its identity with GitHub's OIDC token, and the route only lets in this workflow
+# file on the master branch. Nothing is posted when social posting is off, in preview mode (the tweet is
+# only written into the log), when X is not set up, or when a video already went out today.
+# Run it by hand from the Actions tab to test.
+
+on:
+  schedule:
+    - cron: '30 13 * * *' # 19:00 IST
+  workflow_dispatch:
+
+concurrency:
+  group: x-video
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install fonts and Python packages
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-inter ffmpeg
+          python3 -m pip install --quiet pillow numpy
+      - name: Render and post the video
+        run: python3 scripts/x-video/run.py
