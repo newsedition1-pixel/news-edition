@@ -19,6 +19,13 @@ export const X_POLL_DAILY_CAP = 1
 export const X_VIDEO_DAILY_CAP = 1
 /** Two X posts are never closer than this (an editor's own article excepted). */
 export const X_MIN_GAP_MS = 40 * 60 * 1000
+/**
+ * After this long without an X post (inside the posting window) an ordinary single-source story is
+ * posted too, so the account is not silent all day. Most scheduled stories come from one publisher,
+ * so without this the planner waited for a confirmed story that might not come for hours
+ * (22 Nov 2026: no X post from 07:00 to 09:00 IST).
+ */
+export const X_QUIET_GAP_MS = 90 * 60 * 1000
 /** The poll goes out in the evening, when most readers are online, IST hours [from, to). */
 export const POLL_FROM_HOUR = 17
 export const POLL_TO_HOUR = 22
@@ -29,6 +36,12 @@ export type XMode = 'growth' | 'legacy'
 
 export interface XDay {
   posts: number
+  /**
+   * Posts made inside the 07:00-23:00 IST window. Spacing counts these only, so a night post (an
+   * editor's own article, or one made before growth mode) does not use up the morning's first slot.
+   * Falls back to `posts` when absent.
+   */
+  postsInWindow?: number
   links: number
   polls: number
   videos: number
@@ -43,8 +56,13 @@ export function xDay(log: ShareEntry[], now: Date, dry = false): XDay {
   const day = istDay(now)
   const sent = log.filter((e) => e.dry === dry && istDay(new Date(e.at)) === day && (dry ? !!e.x && e.x.format !== 'skip' : e.results.x?.ok === true))
   const times = sent.map((e) => new Date(e.at).getTime()).filter((t) => Number.isFinite(t))
+  const inWindow = sent.filter((e) => {
+    const h = istHours(new Date(e.at))
+    return h >= FEED_FROM_HOUR && h < FEED_TO_HOUR
+  })
   return {
     posts: sent.length,
+    postsInWindow: inWindow.length,
     links: sent.filter((e) => e.x?.link).length,
     polls: sent.filter((e) => e.x?.format === 'poll').length,
     videos: sent.filter((e) => e.x?.format === 'video').length,
@@ -80,12 +98,14 @@ const skip = (reason: string): XPlan => ({ format: 'skip', link: false, image: f
 export function planX(i: XPlanInput): XPlan {
   const h = istHours(i.now)
   const editor = i.strength === undefined
+  // No X post for a while: a single-source story may go out so the account is not silent.
+  const quiet = !i.today.lastAt || i.now.getTime() - i.today.lastAt.getTime() >= X_QUIET_GAP_MS
   if (i.today.posts >= i.dailyCap) return skip(`daily limit of ${i.dailyCap} X posts reached`)
   if (!editor) {
     if (h < FEED_FROM_HOUR || h >= FEED_TO_HOUR) return skip(`outside ${FEED_FROM_HOUR}:00-${FEED_TO_HOUR}:00 IST`)
-    if (i.today.posts >= allowedSoFar(i.now, i.dailyCap)) return skip('spacing the day out')
+    if ((i.today.postsInWindow ?? i.today.posts) >= allowedSoFar(i.now, i.dailyCap)) return skip('spacing the day out')
     if (i.today.lastAt && i.now.getTime() - i.today.lastAt.getTime() < X_MIN_GAP_MS) return skip('too soon after the last X post')
-    if (!i.top && i.strength! < STRONG_PUBLISHERS) return skip('single-source story: X gets confirmed stories only')
+    if (!i.top && i.strength! < STRONG_PUBLISHERS && !quiet) return skip('single-source story: X waits for a confirmed story or a quiet stretch')
   }
   if (!editor && i.pollSafe && i.today.polls < X_POLL_DAILY_CAP && h >= POLL_FROM_HOUR && h < POLL_TO_HOUR) {
     return { format: 'poll', link: false, image: false, reason: 'the poll of the day' }
@@ -95,7 +115,7 @@ export function planX(i: XPlanInput): XPlan {
     format: 'post',
     link,
     image: i.hasImage && !i.aiCover,
-    reason: editor ? 'published by an editor' : i.top ? 'top story' : `carried by ${i.strength} sources`,
+    reason: editor ? 'published by an editor' : i.top ? 'top story' : i.strength! >= STRONG_PUBLISHERS ? `carried by ${i.strength} sources` : 'quiet stretch: no X post for a while',
   }
 }
 

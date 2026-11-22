@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { X_DAILY_CAP_DEFAULT, X_LINK_DAILY_CAP, planX, xDailyCap, xDay, xModeOf, type XDay, type XPlanInput } from './xplan'
+import { X_DAILY_CAP_DEFAULT, X_LINK_DAILY_CAP, X_QUIET_GAP_MS, planX, xDailyCap, xDay, xModeOf, type XDay, type XPlanInput } from './xplan'
 import type { ShareEntry } from './log'
 
 /** 18:00 IST on 22 Nov 2026. */
@@ -28,9 +28,34 @@ test('an AI illustration or a missing cover goes out without a picture', () => {
   assert.equal(planX(input({ hasImage: false })).image, false)
 })
 
-test('single-source stories stay off X, unless the feed rules made them top after a quiet stretch', () => {
-  assert.equal(planX(input({ top: false, strength: 1 })).format, 'skip')
-  assert.equal(planX(input({ top: true, strength: 1 })).format, 'post')
+test('single-source stories wait for a quiet stretch on X, unless the feed rules made them top', () => {
+  const recent = { ...none, posts: 2, lastAt: new Date(EVENING.getTime() - 60 * 60 * 1000) } // 60 min ago: not quiet yet
+  assert.match(planX(input({ top: false, strength: 1, today: recent })).reason, /single-source/)
+  assert.equal(planX(input({ top: true, strength: 1, today: recent })).format, 'post')
+})
+
+test('a quiet stretch lets a single-source story go out so the account is not silent', () => {
+  const quiet = { ...none, posts: 2, lastAt: new Date(EVENING.getTime() - X_QUIET_GAP_MS - 60 * 1000) }
+  const p = planX(input({ top: false, strength: 1, today: quiet }))
+  assert.deepEqual({ format: p.format, link: p.link, image: p.image }, { format: 'post', link: false, image: true })
+  assert.match(p.reason, /quiet stretch/)
+  // the first story of the day (no X post yet) counts as a quiet stretch too
+  assert.equal(planX(input({ top: false, strength: 1 })).format, 'post')
+  // spacing, the 40 minute gap and the daily limit still hold
+  const tooSoon = { ...none, posts: 2, lastAt: new Date(EVENING.getTime() - 10 * 60 * 1000) }
+  assert.equal(planX(input({ top: false, strength: 1, today: tooSoon })).format, 'skip')
+  assert.equal(planX(input({ top: false, strength: 1, today: { ...quiet, posts: 10 } })).format, 'skip')
+})
+
+test('22 Nov 2026 morning: a night post does not use up the first slot of the day, single-source stories go out when quiet', () => {
+  // A tweet at 00:03 IST (legacy mode) is inside the day's count but outside the window.
+  const log = [entry('2026-11-21T18:33:00Z', { id: 1 })]
+  const at = (t: string) => new Date(t)
+  const day = (now: Date) => xDay(log, now)
+  assert.equal(day(at('2026-11-22T02:02:00Z')).posts, 1)
+  assert.equal(day(at('2026-11-22T02:02:00Z')).postsInWindow, 0)
+  const p = planX(input({ now: at('2026-11-22T02:02:00Z'), today: day(at('2026-11-22T02:02:00Z')), top: false, strength: 1 }))
+  assert.equal(p.format, 'post') // 07:32 IST, last X post 7 hours ago
 })
 
 test('nothing goes out at night, except an editor\'s own article', () => {
