@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
       try {
         const outcome = await runScheduledArticle({ force })
         console.log('News schedule (async):', outcome.status, outcome.message)
+        // Why each story was tried and refused or saved: the runtime log said only "No article passed the checks".
+        for (const a of outcome.attempts) console.log(`News attempt [${a.category}] ${a.title.slice(0, 90)} -> ${a.result.slice(0, 300)}`)
       } catch (error) {
         console.error('News schedule error (async):', error)
       }
