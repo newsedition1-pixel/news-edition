@@ -43,6 +43,8 @@ export interface VideoCandidate {
   spec: VideoSpec
   photoUrl: string
   photoCredit: string
+  /** The narration as an MP3 (base64) with the text it reads; absent when no voice could be made (the video then has music only). */
+  voice?: { mp3Base64: string; text: string }
 }
 
 export interface VideoRow {
@@ -106,6 +108,15 @@ export function pickVideoRows(rows: VideoRow[], log: ShareEntry[], now: Date, li
 /** The newest such story, or null. */
 export function pickVideoRow(rows: VideoRow[], log: ShareEntry[], now: Date): VideoPick | null {
   return pickVideoRows(rows, log, now, 1)[0] ?? null
+}
+
+/**
+ * What the narrator reads: the headline, then the three points, exactly the words on the frames. About
+ * 45 words at most, which is under 20 seconds of speech (the video grows to fit the voice, up to 24 s).
+ */
+export function voiceScript(w: VideoWords): string {
+  const sentence = (t: string) => t.trim().replace(/[.!?\s]+$/, '')
+  return [w.headline, ...w.points].map(sentence).filter(Boolean).join('. ') + '.'
 }
 
 export function buildSpec(row: VideoRow, words: VideoWords, now: Date): VideoSpec {

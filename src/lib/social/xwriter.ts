@@ -32,3 +32,32 @@ export async function askJson(messages: Message[], maxTokens = 450): Promise<str
 export async function writeXDraft(article: ArticleForSocial, wantPoll: boolean): Promise<{ draft: XDraft | null; issues: string[] }> {
   return writeDraft((messages) => askJson(messages), article, wantPoll)
 }
+
+/** The narrator of the X video. Model and voice can be changed in Vercel (OPENAI_TTS_MODEL, OPENAI_TTS_VOICE). */
+export const TTS_MODEL = process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts'
+export const TTS_VOICE = process.env.OPENAI_TTS_VOICE || 'onyx'
+const TTS_STYLE = 'A calm, clear Indian news presenter. Neutral, factual tone, moderate pace, short natural pauses between sentences.'
+
+/** The text read aloud as an MP3, or null when there is no key, the call fails or it takes too long. Never throws. */
+export async function speak(text: string): Promise<Uint8Array | null> {
+  const key = process.env.OPENAI_API_KEY
+  if (!key || !text.trim() || text.length > 1500) return null
+  try {
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      // `instructions` exists on the gpt-4o TTS models only; tts-1 would reject it.
+      body: JSON.stringify({ model: TTS_MODEL, voice: TTS_VOICE, input: text, response_format: 'mp3', ...(/^gpt-4o/i.test(TTS_MODEL) ? { instructions: TTS_STYLE } : {}) }),
+      signal: AbortSignal.timeout(45_000),
+    })
+    if (!res.ok) {
+      console.warn('X video voice: speech request failed', res.status)
+      return null
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    return bytes.byteLength > 2000 ? bytes : null
+  } catch (err) {
+    console.warn('X video voice: speech request error', err instanceof Error ? err.message : err)
+    return null
+  }
+}

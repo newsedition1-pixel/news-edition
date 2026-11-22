@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   const auth = await authoriseCron(request.headers, 'x-video.yml')
   if (!auth.ok) return NextResponse.json({ error: 'Unauthorised', reason: auth.reason }, { status: 401 })
   try {
-    return NextResponse.json(await videoCandidate())
+    return NextResponse.json(await videoCandidate(new Date(), { test: request.nextUrl.searchParams.get('test') === '1' }))
   } catch (error) {
     console.error('X video candidate error:', error)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })

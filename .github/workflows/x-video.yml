@@ -12,6 +12,11 @@ on:
   schedule:
     - cron: '30 13 * * *' # 19:00 IST
   workflow_dispatch:
+    inputs:
+      test:
+        description: 'Test: render the video (with voice) and keep it as a download, post nothing'
+        type: boolean
+        default: false
 
 concurrency:
   group: x-video
@@ -37,4 +42,14 @@ jobs:
           sudo apt-get install -y -qq fonts-inter ffmpeg python3-pil python3-numpy
           python3 -I -c "import PIL, numpy; print('Pillow', PIL.__version__, 'numpy', numpy.__version__)"
       - name: Render and post the video
+        env:
+          XVIDEO_TEST: ${{ inputs.test && '1' || '' }}
         run: python3 scripts/x-video/run.py
+      - name: Keep the test video
+        if: ${{ inputs.test }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-video-test
+          path: x-video-test.mp4
+          if-no-files-found: warn
+          retention-days: 3
