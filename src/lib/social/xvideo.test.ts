@@ -136,6 +136,9 @@ test('a Hindi narration with digits, Latin letters, symbols, the wrong length or
   assert.ok(checkHindi(swap(1, Array(21).fill('बैंक').join(' '))).some((m) => /Line 2/.test(m)))
   assert.ok(checkHindi(['एक दो तीन चार।', 'एक दो तीन चार।', 'एक दो तीन चार।', 'एक दो तीन चार।']).some((m) => /in all/.test(m)))
   assert.ok(checkHindi(['सब ठीक है।', 'सब ठीक है।', 'सब ठीक है।', 'सब ठीक है।']).some((m) => /in all/.test(m)))
+  // 51 words would run past 26 s of speech (about 2 words a second): too long even sped up, so the voice would be dropped
+  assert.ok(checkHindi([13, 13, 13, 12].map((n) => Array(n).fill('बैंक').join(' '))).some((m) => /in all/.test(m)))
+  assert.deepEqual(checkHindi([13, 13, 12, 12].map((n) => Array(n).fill('बैंक').join(' '))), [])
 })
 
 test('the JSON of the Hindi writer must hold exactly four strings', () => {
@@ -151,7 +154,7 @@ test('the Hindi script ends every line with one danda and stays far under the 15
   assert.equal(text, 'पहली पंक्ति। दूसरी पंक्ति। तीसरी पंक्ति। चौथी पंक्ति।')
   assert.doesNotMatch(text, /।।|\s{2}/)
   const word = 'क'.repeat(15)
-  const longest = [15, 15, 14, 14].map((n) => Array(n).fill(word).join(' '))
+  const longest = [13, 13, 12, 12].map((n) => Array(n).fill(word).join(' '))
   assert.equal(longest.reduce((n, l) => n + l.split(' ').length, 0), HINDI_TOTAL_WORDS.max)
   assert.ok(hindiScript(longest).length < 1500)
 })
