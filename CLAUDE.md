@@ -90,6 +90,10 @@ SMTP_USER=
 SMTP_PASSWORD=              # App password if Gmail 2FA is on
 EMAIL_FROM=NewsEdition <noreply@yourdomain.com>
 
+# Google AdSense (optional). Publisher ID from AdSense > Account > Account information, as pub-1234567890123456 (ca-pub-... also accepted).
+# Empty or malformed = nothing ad-related is emitted and /ads.txt answers 404. Needs a redeploy after changing.
+ADSENSE_PUBLISHER_ID=
+
 # Public
 NEXT_PUBLIC_SITE_URL=https://yourdomain.com
 NEXT_PUBLIC_SITE_NAME=NewsEdition
@@ -284,6 +288,10 @@ Every article that goes live is shared on social media by `shareArticle()` (`lib
 ## Reel assets (`GET /api/reel-asset/{slug}`)
 
 Read-only helper for the automatic daily Reel (a scheduled task outside this repo, see the Reel notes in the project docs). The task can read Vercel pages only as text, so this route returns JSON for a *published* article: title, URL, category, the cover credit as plain text (`coverCredit`, read from the `Cover image:` line by `lib/reel/asset.ts`), `coverKind` (`photo` | `ai` | `none`) and, for a credited photo only, a 1080x640 copy of the cover as base64 (a Cloudinary variant). An AI illustration or a cover with no credit line is never sent: the Reel then has no picture. Tests: `lib/reel/asset.test.ts`.
+
+## Monetization (Google AdSense)
+
+Nothing ad-related is live until the owner sets `ADSENSE_PUBLISHER_ID` in Vercel (production) and redeploys. Then: `/ads.txt` (`src/app/ads.txt/route.ts`) serves `google.com, pub-..., DIRECT, f08c47fec0942fa0`; the root layout adds `<meta name="google-adsense-account">`; `AdSenseScript` (in the `(public)` layout only, so never on admin or login screens) loads the AdSense library. Helpers and tests: `lib/ads.ts`, `lib/ads.test.ts`. There are no ad slots in the code: use AdSense Auto ads, and exclude `/search*` and `/settings/*` in AdSense > Sites > Auto ads. For visitors in the EEA, UK and Switzerland Google requires a certified consent banner: create it in AdSense > Privacy & messaging (Google serves it through the same script). Policy risks that code cannot fix (rewritten publisher reports published at volume, publisher photos, sensitive-topic stories) are listed in `newsedition-monetization-readiness-2026-11-22.md` in the project docs.
 
 ## Admin Panel
 

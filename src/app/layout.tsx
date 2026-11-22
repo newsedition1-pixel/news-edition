@@ -4,6 +4,7 @@ import Script from 'next/script'
 import { ThemeProvider } from '@/components/layout/ThemeProvider'
 import { PreloadResources } from '@/components/layout/PreloadResources'
 import { FEED_PATH, TWITTER_HANDLE } from '@/lib/seo'
+import { adsenseClient, configuredPublisherId } from '@/lib/ads'
 import './globals.scss'
 
 const inter = Inter({
@@ -49,6 +50,10 @@ export const metadata: Metadata = {
     site: TWITTER_HANDLE,
   },
   verification: { google: '8Iz3f_2karh5jShQV1mprOLbpZ_Fvs3ZpOAP1HICFBc' },
+  // AdSense site verification. Only present once ADSENSE_PUBLISHER_ID is set (lib/ads.ts).
+  other: adsenseClient(configuredPublisherId())
+    ? { 'google-adsense-account': adsenseClient(configuredPublisherId()) as string }
+    : undefined,
 }
 
 export const viewport: Viewport = {

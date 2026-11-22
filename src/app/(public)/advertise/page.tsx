@@ -3,25 +3,27 @@ import styles from '../static.module.scss'
 
 export const metadata: Metadata = {
   title: 'Advertise With Us',
-  description: 'Reach thousands of engaged readers across India. Advertise on NewsEdition at very competitive rates. Contact us to get started.',
+  description: 'Advertise on NewsEdition: banner ads, sponsored articles and category sponsorships next to daily India, world, business and Haryana news. Email us for rates and current audience figures.',
   alternates: { canonical: '/advertise' },
 }
 
+// No audience size, reader profile or price claims here on purpose: none of them is backed by
+// published numbers. Add them only together with the source (analytics export, date range).
 const PERKS = [
   {
-    icon: '📈',
-    title: 'Growing Audience',
-    desc: 'Reach thousands of engaged readers interested in business, politics, and current affairs across India.',
+    icon: '📰',
+    title: 'Daily News Coverage',
+    desc: 'NewsEdition publishes India, world, politics, business, entertainment and Haryana news through the day, so your message sits next to fresh, relevant reading.',
   },
   {
-    icon: '💰',
-    title: 'Competitive Pricing',
-    desc: 'We offer very affordable advertising rates. Quality reach without breaking your budget.',
+    icon: '🤝',
+    title: 'Simple Terms',
+    desc: 'Tell us what you need and we reply with formats and rates. There is no minimum spend.',
   },
   {
-    icon: '🎯',
-    title: 'Targeted Reach',
-    desc: 'Our readers are decision-makers, professionals, and news-aware citizens — a high-value audience for your brand.',
+    icon: '📊',
+    title: 'Real Numbers On Request',
+    desc: 'Ask us for current audience figures from our own analytics before you decide, instead of relying on rounded-up claims.',
   },
 ]
 
@@ -30,10 +32,10 @@ export default function AdvertisePage() {
     <div className={styles.page}>
       <div className={styles.hero}>
         <span className={styles.eyebrow}>Advertise</span>
-        <h1 className={styles.title}>Put Your Brand in Front of the Right Audience</h1>
+        <h1 className={styles.title}>Put Your Brand Next to the News</h1>
         <p className={styles.lead}>
-          NewsEdition connects your brand with thousands of engaged readers across India who care about
-          business, politics, and the news that drives decisions. We keep it simple and affordable.
+          NewsEdition is an Indian digital news site covering business, politics, world affairs,
+          entertainment and Haryana. If you want your brand beside that coverage, write to us.
         </p>
       </div>
 
@@ -54,13 +56,12 @@ export default function AdvertisePage() {
         <h2 className={styles.sectionTitle}>How to Get Started</h2>
         <div className={styles.body}>
           <p>
-            Getting your brand on NewsEdition is easy. Simply email us with your requirements —
-            whether it&apos;s a banner ad, a sponsored article, a category sponsorship, or something
-            custom — and we&apos;ll get back to you with options and pricing.
+            Email us with your requirements, whether it&apos;s a banner ad, a sponsored article, a
+            category sponsorship, or something custom, and we&apos;ll get back to you with options
+            and pricing.
           </p>
           <p>
             We work with businesses of all sizes, from local startups to established enterprises.
-            There&apos;s no minimum spend and no complicated process.
           </p>
         </div>
       </div>
@@ -68,8 +69,7 @@ export default function AdvertisePage() {
       <div className={styles.ctaBox}>
         <div className={styles.ctaTitle}>Ready to Advertise?</div>
         <p className={styles.ctaDesc}>
-          Drop us an email and we&apos;ll respond within 24 hours with available options and our very
-          competitive rates.
+          Drop us an email and we&apos;ll respond within 24 hours with available options and rates.
         </p>
         <a href="mailto:newsedition1@gmail.com" className={styles.ctaBtn}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
