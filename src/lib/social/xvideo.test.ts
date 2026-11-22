@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { alreadyVideoed, buildSpec, checkWords, dateLabel, isMp4, parseWords, pickVideoRow, publisherOf, videoLogId, videosToday, writeWords, type VideoRow } from './xvideo'
+import { VIDEO_HEADLINE_ASK, VIDEO_HEADLINE_MAX, VIDEO_STORY_TRIES, alreadyVideoed, buildSpec, buildWordsPrompt, checkWords, dateLabel, isMp4, parseWords, pickVideoRow, pickVideoRows, publisherOf, videoLogId, videosToday, writeWords, type VideoRow } from './xvideo'
 import type { ShareEntry } from './log'
 
 const NOW = new Date('2026-11-22T13:30:00Z')
@@ -74,4 +74,21 @@ test('only an MP4 passes the upload check', () => {
   assert.equal(isMp4(mp4), true)
   assert.equal(isMp4(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0])), false)
   assert.equal(isMp4(new Uint8Array(4)), false)
+})
+
+test('several stories are offered, newest first, so a rejected text does not end the day', () => {
+  const rows = [row({ id: 1 }), row({ id: 2, content: body }), row({ id: 3 }), row({ id: 4 }), row({ id: 5 })]
+  assert.deepEqual(pickVideoRows(rows, [], NOW).map((p) => p.row.id), [1, 3, 4]) // 2 has no credited photo
+  assert.equal(pickVideoRows(rows, [], NOW).length, VIDEO_STORY_TRIES)
+  assert.deepEqual(pickVideoRows(rows, [], NOW, 1).map((p) => p.row.id), [1])
+  assert.equal(pickVideoRow(rows, [], NOW)?.row.id, 1)
+  const log = [logEntry({ id: videoLogId(1) })]
+  assert.deepEqual(pickVideoRows(rows, log, NOW).map((p) => p.row.id), [3, 4, 5])
+})
+
+test('the writer is asked for a headline with a margin under the hard limit', () => {
+  assert.ok(VIDEO_HEADLINE_ASK < VIDEO_HEADLINE_MAX)
+  const { system } = buildWordsPrompt({ title: 't', excerpt: 'e', url: 'https://newsedition.in/article/s', tags: [], categorySlug: null, categoryName: null, imageUrl: null, content: '<p>x</p>' })
+  assert.match(system, new RegExp(`20 to ${VIDEO_HEADLINE_ASK} characters`))
+  assert.match(system, new RegExp(`over ${VIDEO_HEADLINE_MAX} is rejected`))
 })
