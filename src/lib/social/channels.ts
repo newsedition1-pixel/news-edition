@@ -76,9 +76,15 @@ export interface SendDeps {
 }
 
 const TIMEOUT_MS = 12_000
+/**
+ * A Facebook link post makes Facebook fetch the (just published, so cold) article page for its preview, which
+ * can take longer than 12 s: on 22 Nov 2026 article #1688 was logged as FAILED (aborted due to timeout) although
+ * the next article went through. The senders run in parallel, so a longer wait delays nothing else.
+ */
+export const FACEBOOK_TIMEOUT_MS = 40_000
 
-async function call(deps: SendDeps, url: string, init: RequestInit): Promise<{ status: number; body: Record<string, unknown>; text: string }> {
-  const res = await deps.fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
+async function call(deps: SendDeps, url: string, init: RequestInit, timeoutMs = TIMEOUT_MS): Promise<{ status: number; body: Record<string, unknown>; text: string }> {
+  const res = await deps.fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
   const text = await res.text()
   let body: Record<string, unknown> = {}
   try {
@@ -289,7 +295,7 @@ export async function sendFacebook(all: ChannelConfig, post: ComposedPost, deps:
   if (!cfg) return { ok: false, error: 'not configured' }
   try {
     const f = form({ message: post.text, ...(post.link ? { link: post.link } : {}), access_token: cfg.token })
-    const r = await call(deps, graph(all, `${cfg.pageId}/feed`), { method: 'POST', ...f })
+    const r = await call(deps, graph(all, `${cfg.pageId}/feed`), { method: 'POST', ...f }, FACEBOOK_TIMEOUT_MS)
     const id = r.body.id
     if (r.status >= 200 && r.status < 300 && typeof id === 'string') return { ok: true, ref: id }
     return { ok: false, error: metaError(r) }
