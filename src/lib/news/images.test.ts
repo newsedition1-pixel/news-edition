@@ -126,6 +126,8 @@ test('the scale of a plan says how much the picture is enlarged', () => {
 test('the resize step is exactly the cover size, smart crop or blurred padding', () => {
   assert.deepEqual(coverResizeStep('fill'), { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill', gravity: 'auto' })
   assert.deepEqual(coverResizeStep('pad'), { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'pad', background: 'blurred:400:15' })
+  // The last-resort step has no gravity or background option, so Cloudinary has nothing to refuse.
+  assert.deepEqual(coverResizeStep('plain'), { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill' })
   assert.equal(COVER_WIDTH, 1200)
   assert.equal(COVER_HEIGHT, 630)
 })

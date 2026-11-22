@@ -117,10 +117,11 @@ async function storeImage(src: string, uploadedBy: string) {
     throw new Error(`Image rejected: ${plan.reason}`)
   }
 
-  const attempts: { mode: 'fill' | 'pad'; logo: boolean }[] = [
+  const attempts: { mode: 'fill' | 'pad' | 'plain'; logo: boolean }[] = [
     { mode: plan.mode, logo: true },
     ...(plan.mode === 'pad' ? [{ mode: 'fill' as const, logo: true }] : []),
     { mode: 'fill', logo: false },
+    { mode: 'plain', logo: false },
   ]
   let result
   let logoApplied = false

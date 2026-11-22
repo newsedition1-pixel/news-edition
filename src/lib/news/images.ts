@@ -206,11 +206,15 @@ export function planCover(width: number | null | undefined, height: number | nul
   return { mode, scale }
 }
 
-/** The Cloudinary resize step that turns a picture into the {@link COVER_WIDTH}x{@link COVER_HEIGHT} cover. */
-export function coverResizeStep(mode: 'fill' | 'pad'): Record<string, unknown> {
-  return mode === 'pad'
-    ? { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'pad', background: 'blurred:400:15' }
-    : { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill', gravity: 'auto' }
+/**
+ * The Cloudinary resize step that turns a picture into the {@link COVER_WIDTH}x{@link COVER_HEIGHT} cover.
+ * `fill` is the smart crop, `pad` keeps the whole picture on a blurred copy of itself, and `plain` is the
+ * last resort: a centre crop with no gravity or background option for Cloudinary to refuse.
+ */
+export function coverResizeStep(mode: 'fill' | 'pad' | 'plain'): Record<string, unknown> {
+  if (mode === 'pad') return { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'pad', background: 'blurred:400:15' }
+  if (mode === 'plain') return { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill' }
+  return { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill', gravity: 'auto' }
 }
 
 /** A prompt for the last-resort illustration that image models do not refuse: abstract, no people, nothing violent. */
