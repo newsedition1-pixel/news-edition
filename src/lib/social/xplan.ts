@@ -1,16 +1,18 @@
 /**
- * What goes to X, and when. X is the one platform where volume hurts: dozens of automated posts a
- * day that nobody reacts to lower the account's reach for every later post (21 Nov 2026 audit:
- * 3 to 9 views per post). So X gets a few confirmed stories a day, each with a picture, a poll once
- * a day, and the article link only on the best few (a post with a link costs 13 times more on the
- * X API). Telegram still gets every article. An article an editor published by hand is always
- * posted (inside the daily limit). Pure and unit-tested.
+ * What goes to X, and when. The 21 Nov 2026 audit found that dozens of automated posts a day that
+ * nobody reacts to can lower the account's reach for every later post (3 to 9 views per post), so
+ * growth mode was built around a few confirmed stories a day. Owner decision 22 Nov 2026: 20 posts a
+ * day on every account, so every story is eligible now and the day's budget is spread evenly (to go
+ * back, set X_DAILY_CAP lower and raise X_QUIET_GAP_MS). The extras stay: a picture when the cover is a
+ * real photo, one poll a day, one video, and the article link only on a few (a post with a link costs 13
+ * times more on the X API). Telegram still gets every article. An article an editor published by hand
+ * is always posted (inside the daily limit). Pure and unit-tested.
  */
 import { FEED_FROM_HOUR, FEED_TO_HOUR, STRONG_PUBLISHERS, allowedSoFar, istDay, istHours } from './policy'
 import type { ShareEntry } from './log'
 
-/** Posts per day (IST). Override with the X_DAILY_CAP environment variable. */
-export const X_DAILY_CAP_DEFAULT = 10
+/** Posts per day (IST). Override with the X_DAILY_CAP environment variable (not set in Vercel on 22 Nov 2026). */
+export const X_DAILY_CAP_DEFAULT = 20
 export const X_DAILY_CAP_MAX = 40
 /** Posts that carry the article link per day (each costs $0.20 on the X API instead of $0.015). */
 export const X_LINK_DAILY_CAP = 5
@@ -18,14 +20,14 @@ export const X_POLL_DAILY_CAP = 1
 /** Videos per day (the x-video workflow makes one). */
 export const X_VIDEO_DAILY_CAP = 1
 /** Two X posts are never closer than this (an editor's own article excepted). */
-export const X_MIN_GAP_MS = 40 * 60 * 1000
+export const X_MIN_GAP_MS = 25 * 60 * 1000
 /**
  * After this long without an X post (inside the posting window) an ordinary single-source story is
- * posted too, so the account is not silent all day. Most scheduled stories come from one publisher,
- * so without this the planner waited for a confirmed story that might not come for hours
- * (22 Nov 2026: no X post from 07:00 to 09:00 IST).
+ * posted too. Equal to the minimum gap: every story is eligible, the daily budget and the spacing set the
+ * pace. (Until 22 Nov 2026 this was 90 minutes and single-source stories waited for a confirmed story;
+ * most scheduled stories come from one publisher, so the account was silent for hours.)
  */
-export const X_QUIET_GAP_MS = 90 * 60 * 1000
+export const X_QUIET_GAP_MS = X_MIN_GAP_MS
 /** The poll goes out in the evening, when most readers are online, IST hours [from, to). */
 export const POLL_FROM_HOUR = 17
 export const POLL_TO_HOUR = 22
@@ -105,17 +107,19 @@ export function planX(i: XPlanInput): XPlan {
     if (h < FEED_FROM_HOUR || h >= FEED_TO_HOUR) return skip(`outside ${FEED_FROM_HOUR}:00-${FEED_TO_HOUR}:00 IST`)
     if ((i.today.postsInWindow ?? i.today.posts) >= allowedSoFar(i.now, i.dailyCap)) return skip('spacing the day out')
     if (i.today.lastAt && i.now.getTime() - i.today.lastAt.getTime() < X_MIN_GAP_MS) return skip('too soon after the last X post')
-    if (!i.top && i.strength! < STRONG_PUBLISHERS && !quiet) return skip('single-source story: X waits for a confirmed story or a quiet stretch')
+    if (!i.top && i.strength! < STRONG_PUBLISHERS && !quiet) return skip('single-source story: X waits for a quiet stretch')
   }
   if (!editor && i.pollSafe && i.today.polls < X_POLL_DAILY_CAP && h >= POLL_FROM_HOUR && h < POLL_TO_HOUR) {
     return { format: 'poll', link: false, image: false, reason: 'the poll of the day' }
   }
-  const link = i.today.links < X_LINK_DAILY_CAP && (i.linkMode === 'always' || (i.linkMode === 'top' && i.top))
+  // With every story eligible, `top` no longer says which story is strong: the few paid links go to confirmed ones.
+  const confirmed = editor || i.strength! >= STRONG_PUBLISHERS
+  const link = i.today.links < X_LINK_DAILY_CAP && (i.linkMode === 'always' || (i.linkMode === 'top' && i.top && confirmed))
   return {
     format: 'post',
     link,
     image: i.hasImage && !i.aiCover,
-    reason: editor ? 'published by an editor' : i.top ? 'top story' : i.strength! >= STRONG_PUBLISHERS ? `carried by ${i.strength} sources` : 'quiet stretch: no X post for a while',
+    reason: editor ? 'published by an editor' : i.strength! >= STRONG_PUBLISHERS ? `carried by ${i.strength} sources` : 'ordinary story, one publisher',
   }
 }
 

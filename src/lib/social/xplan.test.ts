@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { X_DAILY_CAP_DEFAULT, X_LINK_DAILY_CAP, X_QUIET_GAP_MS, planX, xDailyCap, xDay, xModeOf, type XDay, type XPlanInput } from './xplan'
+import { X_DAILY_CAP_DEFAULT, X_LINK_DAILY_CAP, X_MIN_GAP_MS, X_QUIET_GAP_MS, planX, xDailyCap, xDay, xModeOf, type XDay, type XPlanInput } from './xplan'
 import type { ShareEntry } from './log'
 
 /** 18:00 IST on 22 Nov 2026. */
@@ -8,7 +8,7 @@ const EVENING = new Date('2026-11-22T12:30:00Z')
 const none: XDay = { posts: 0, links: 0, polls: 0, videos: 0, lastAt: null }
 
 function input(over: Partial<XPlanInput> = {}): XPlanInput {
-  return { now: EVENING, today: none, top: true, strength: 3, linkMode: 'top', dailyCap: 10, hasImage: true, aiCover: false, pollSafe: false, ...over }
+  return { now: EVENING, today: none, top: true, strength: 3, linkMode: 'top', dailyCap: X_DAILY_CAP_DEFAULT, hasImage: true, aiCover: false, pollSafe: false, ...over }
 }
 
 test('a confirmed top story is a post with its picture and the link', () => {
@@ -28,23 +28,27 @@ test('an AI illustration or a missing cover goes out without a picture', () => {
   assert.equal(planX(input({ hasImage: false })).image, false)
 })
 
-test('single-source stories wait for a quiet stretch on X, unless the feed rules made them top', () => {
-  const recent = { ...none, posts: 2, lastAt: new Date(EVENING.getTime() - 60 * 60 * 1000) } // 60 min ago: not quiet yet
-  assert.match(planX(input({ top: false, strength: 1, today: recent })).reason, /single-source/)
-  assert.equal(planX(input({ top: true, strength: 1, today: recent })).format, 'post')
+test('20 posts a day, at least 25 minutes apart', () => {
+  assert.equal(X_DAILY_CAP_DEFAULT, 20)
+  assert.equal(X_MIN_GAP_MS, 25 * 60 * 1000)
+  assert.equal(X_QUIET_GAP_MS, X_MIN_GAP_MS) // every story is eligible: only spacing and the daily budget set the pace
 })
 
-test('a quiet stretch lets a single-source story go out so the account is not silent', () => {
-  const quiet = { ...none, posts: 2, lastAt: new Date(EVENING.getTime() - X_QUIET_GAP_MS - 60 * 1000) }
-  const p = planX(input({ top: false, strength: 1, today: quiet }))
+test('an ordinary single-source story goes out once the gap since the last X post has passed', () => {
+  const after = (min: number) => ({ ...none, posts: 2, lastAt: new Date(EVENING.getTime() - min * 60 * 1000) })
+  const p = planX(input({ top: false, strength: 1, today: after(30) })) // the next scheduled article, 30 min later
   assert.deepEqual({ format: p.format, link: p.link, image: p.image }, { format: 'post', link: false, image: true })
-  assert.match(p.reason, /quiet stretch/)
-  // the first story of the day (no X post yet) counts as a quiet stretch too
-  assert.equal(planX(input({ top: false, strength: 1 })).format, 'post')
-  // spacing, the 40 minute gap and the daily limit still hold
-  const tooSoon = { ...none, posts: 2, lastAt: new Date(EVENING.getTime() - 10 * 60 * 1000) }
-  assert.equal(planX(input({ top: false, strength: 1, today: tooSoon })).format, 'skip')
-  assert.equal(planX(input({ top: false, strength: 1, today: { ...quiet, posts: 10 } })).format, 'skip')
+  assert.match(p.reason, /one publisher/)
+  assert.equal(planX(input({ top: false, strength: 1 })).format, 'post') // the first story of the day
+  // spacing and the daily limit still hold
+  assert.match(planX(input({ top: false, strength: 1, today: after(10) })).reason, /too soon/)
+  assert.equal(planX(input({ top: false, strength: 1, today: { ...after(30), posts: X_DAILY_CAP_DEFAULT } })).format, 'skip')
+})
+
+test('the few paid links go to confirmed stories, not to every story the feed rules now accept', () => {
+  assert.equal(planX(input({ top: true, strength: 1 })).link, false)
+  assert.equal(planX(input({ top: true, strength: 2 })).link, true)
+  assert.equal(planX(input({ top: true, strength: undefined })).link, true) // an editor's own article
 })
 
 test('22 Nov 2026 morning: a night post does not use up the first slot of the day, single-source stories go out when quiet', () => {
@@ -65,13 +69,14 @@ test('nothing goes out at night, except an editor\'s own article', () => {
 })
 
 test('the daily limit holds for everyone', () => {
-  assert.equal(planX(input({ today: { ...none, posts: 10 } })).format, 'skip')
-  assert.equal(planX(input({ today: { ...none, posts: 10 }, strength: undefined })).format, 'skip')
+  assert.equal(planX(input({ today: { ...none, posts: X_DAILY_CAP_DEFAULT } })).format, 'skip')
+  assert.equal(planX(input({ today: { ...none, posts: X_DAILY_CAP_DEFAULT }, strength: undefined })).format, 'skip')
 })
 
 test('posts are spread over the day and kept apart', () => {
-  const morning = new Date('2026-11-22T02:30:00Z') // 08:00 IST: one post allowed so far
-  assert.equal(planX(input({ now: morning, today: { ...none, posts: 1 } })).format, 'skip')
+  const morning = new Date('2026-11-22T02:30:00Z') // 08:00 IST: two posts allowed so far
+  assert.equal(planX(input({ now: morning, today: { ...none, posts: 1 } })).format, 'post')
+  assert.equal(planX(input({ now: morning, today: { ...none, posts: 2 } })).format, 'skip')
   const recent = { ...none, posts: 2, lastAt: new Date(EVENING.getTime() - 10 * 60 * 1000) }
   assert.match(planX(input({ today: recent })).reason, /too soon/)
   assert.equal(planX(input({ today: { ...recent, lastAt: new Date(EVENING.getTime() - 60 * 60 * 1000) } })).format, 'post')

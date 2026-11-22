@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { allowedSoFar, feedDecision, FEED_DAILY_CAP, istDay, istHours } from './policy'
+import { allowedSoFar, feedDecision, FEED_DAILY_CAP, FEED_MIN_GAP_MS, FEED_QUIET_GAP_MS, istDay, istHours } from './policy'
 
 // IST = UTC + 5:30
 const ist = (h: number, m = 0) => new Date(Date.UTC(2026, 10, 20, h - 5, m - 30))
@@ -10,11 +10,13 @@ test('India time is read correctly', () => {
   assert.equal(istHours(ist(9, 30)), 9.5)
 })
 
-test('the daily cap is spread over the window', () => {
+test('the daily cap is 20, spread over the window', () => {
+  assert.equal(FEED_DAILY_CAP, 20)
   assert.equal(allowedSoFar(ist(7)), 1)
-  assert.equal(allowedSoFar(ist(11)), 3)
-  assert.equal(allowedSoFar(ist(15)), 5)
+  assert.equal(allowedSoFar(ist(11)), 6)
+  assert.equal(allowedSoFar(ist(15)), 11)
   assert.equal(allowedSoFar(ist(22, 59)), FEED_DAILY_CAP)
+  assert.equal(allowedSoFar(ist(11), 8), 3) // a lower cap (to go back to fewer posts) is spread the same way
 })
 
 const base = { chosenToday: 0, lastChosenAt: null, strength: 3 }
@@ -30,21 +32,24 @@ test('a story carried by several publishers is a top story', () => {
   assert.match(d.reason, /3 sources/)
 })
 
-test('an ordinary story waits for a quiet stretch', () => {
+test('an ordinary single-source story is posted too, once the gap since the last post has passed', () => {
   const now = ist(12)
-  assert.equal(feedDecision({ now, chosenToday: 1, lastChosenAt: ist(11, 30), strength: 1 }).top, false)
+  assert.equal(FEED_QUIET_GAP_MS, FEED_MIN_GAP_MS) // every story is eligible: only spacing and the daily budget limit the feed
+  assert.equal(feedDecision({ now, chosenToday: 1, lastChosenAt: ist(11, 45), strength: 1 }).top, false) // 15 min ago
+  assert.equal(feedDecision({ now, chosenToday: 1, lastChosenAt: ist(11, 30), strength: 1 }).top, true) // 30 min ago: the next scheduled article
   assert.equal(feedDecision({ now, chosenToday: 1, lastChosenAt: ist(9, 30), strength: 1 }).top, true)
   assert.equal(feedDecision({ now, chosenToday: 0, lastChosenAt: null, strength: 1 }).top, true)
 })
 
-test('two top stories are never closer than 45 minutes', () => {
-  assert.equal(feedDecision({ now: ist(12), chosenToday: 1, lastChosenAt: ist(11, 30), strength: 4 }).top, false)
-  assert.equal(feedDecision({ now: ist(12), chosenToday: 1, lastChosenAt: ist(11, 0), strength: 4 }).top, true)
+test('two feed posts are never closer than 25 minutes', () => {
+  assert.equal(feedDecision({ now: ist(12), chosenToday: 1, lastChosenAt: ist(11, 45), strength: 4 }).top, false)
+  assert.equal(feedDecision({ now: ist(12), chosenToday: 1, lastChosenAt: ist(11, 30), strength: 4 }).top, true)
 })
 
-test('the day is paced: strong stories early do not use up the whole budget', () => {
-  assert.equal(feedDecision({ now: ist(8), chosenToday: 1, lastChosenAt: ist(7, 0), strength: 4 }).top, false)
-  assert.equal(feedDecision({ now: ist(8), chosenToday: 1, lastChosenAt: ist(7, 0), strength: 4 }).reason, 'spacing the day out')
+test('the day is paced: posts early do not use up the whole budget', () => {
+  assert.equal(feedDecision({ now: ist(8), chosenToday: 1, lastChosenAt: ist(7, 0), strength: 4 }).top, true) // 2 allowed by 08:00
+  assert.equal(feedDecision({ now: ist(8), chosenToday: 2, lastChosenAt: ist(7, 0), strength: 4 }).top, false)
+  assert.equal(feedDecision({ now: ist(8), chosenToday: 2, lastChosenAt: ist(7, 0), strength: 4 }).reason, 'spacing the day out')
 })
 
 test('the daily cap is a hard limit', () => {

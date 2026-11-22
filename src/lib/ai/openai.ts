@@ -1,8 +1,8 @@
 import 'server-only'
 import { buildRetryPrompt, buildSystemPrompt, buildUserPrompt, type PromptInput } from './prompts'
+import { imageModelChain, modelUnavailable } from './imageModels'
 
 const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini'
-const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
 
 /** GPT-5 and o-series models reject temperature, presence_penalty and max_tokens, and spend part of the budget on reasoning. */
 export function isReasoningModel(model: string): boolean {
@@ -127,27 +127,51 @@ export async function rewriteArticle(input: RewriteInput, retry?: RewriteRetry):
   return chatJson(input, retry)
 }
 
-/** Generate a cover image, returned as a PNG data URI ready for Cloudinary. */
-export async function generateCoverImage(prompt: string): Promise<string> {
-  const res = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey()}` },
-    body: JSON.stringify({
-      model: IMAGE_MODEL,
-      prompt: prompt.slice(0, 900),
-      size: '1536x1024',
-      quality: 'medium',
-      n: 1,
-    }),
-  })
+/** Models the API has said are gone or closed to this account (kept for the life of the server instance). */
+const unavailableImageModels = new Set<string>()
+/** The model that last worked, tried first on the next call. */
+let workingImageModel: string | null = null
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`OpenAI image failed (${res.status}): ${detail.slice(0, 300)}`)
+/**
+ * Generate a cover image, returned as a PNG data URI ready for Cloudinary. Tries OPENAI_IMAGE_MODEL and then
+ * the models in imageModels.ts; only an "unavailable model" answer moves on to the next one.
+ */
+export async function generateCoverImage(prompt: string): Promise<string> {
+  const chain = imageModelChain(process.env.OPENAI_IMAGE_MODEL)
+  const order = workingImageModel && chain.includes(workingImageModel) ? [workingImageModel, ...chain.filter((m) => m !== workingImageModel)] : chain
+  const problems: string[] = []
+
+  for (const model of order) {
+    if (unavailableImageModels.has(model)) continue
+    const res = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey()}` },
+      body: JSON.stringify({
+        model,
+        prompt: prompt.slice(0, 900),
+        size: '1536x1024',
+        quality: 'medium',
+        n: 1,
+      }),
+    })
+
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => '')).slice(0, 300)
+      if (modelUnavailable(res.status, detail)) {
+        unavailableImageModels.add(model)
+        problems.push(`${model}: ${res.status}`)
+        console.warn(`OpenAI image model ${model} is not available (${res.status}): ${detail}`)
+        continue
+      }
+      throw new Error(`OpenAI image failed (${res.status}, ${model}): ${detail}`)
+    }
+
+    const data = await res.json()
+    const b64 = data.data?.[0]?.b64_json
+    if (!b64) throw new Error(`OpenAI image returned no data (${model})`)
+    workingImageModel = model
+    return `data:image/png;base64,${b64}`
   }
 
-  const data = await res.json()
-  const b64 = data.data?.[0]?.b64_json
-  if (!b64) throw new Error('OpenAI image returned no data')
-  return `data:image/png;base64,${b64}`
+  throw new Error(`OpenAI image: no image model is available (${problems.join(', ') || 'all skipped'}). Set OPENAI_IMAGE_MODEL to one the account can use.`)
 }
