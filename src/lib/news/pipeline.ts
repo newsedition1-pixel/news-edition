@@ -10,11 +10,11 @@ import { fetchTrustedArticle, type TrustedArticle } from './feeds'
 import { assessArticle, htmlToText, sanitizeArticleHtml, type QualityReport } from './quality'
 import { auditArticle, betterAudit, chooseSeo, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, type AuditMode, type AuditResult, type AuditSummary, type LlmFindings } from './audit'
 import { assembleArticleHtml, primaryDocumentLinks, type ExternalSource } from './links'
-import { buildImageCredit, buildPublisherImageCredit, imageKey, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, safeCoverPrompt, searchCommonsImage } from './images'
+import { buildImageCredit, buildPublisherImageCredit, COVER_HEIGHT, COVER_WIDTH, coverResizeStep, imageKey, isSiteDefaultImage, looksLikePlaceholderImage, planCover, safeCoverPrompt, searchCommonsImage } from './images'
 import { checkImageForBrandLogo } from '@/lib/ai/logoCheck'
 import { logoCheckEnabled } from '@/lib/ai/logoPrompt'
 import { publisherSiteImage } from './siteImage'
-import { ensureWatermark, watermarkTransformation } from './watermark'
+import { coverTransformation, ensureWatermark } from './watermark'
 import { finalizeSeo, finalizeTags, rankInternalCandidates, type PublishedRow } from './meta'
 import { isTrustedUrl } from './publishers'
 import { MIN_NEWS_WORD_LENGTH } from '@/lib/settings'
@@ -91,28 +91,56 @@ const MAX_PICTURES_PER_REPORT = 3
 const MAX_LOGO_CHECKS = 4
 
 /**
- * Uploads a cover image with the NewsEdition logo burned into the corner. Images narrower than
- * `MIN_COVER_WIDTH` are rejected (they are almost always logos or thumbnails). Returns whether the
- * logo made it onto the image so the editor can be told when it did not.
+ * Stores a cover image at the standard 1200x630 size with the NewsEdition logo burned into the corner.
+ *
+ * 1. The picture is uploaded as it is (width capped at 1600) only to learn its real size.
+ * 2. `planCover` decides how it becomes a 1200x630 cover: a smart crop for landscape pictures, the whole
+ *    picture on a blurred copy of itself for portrait and near-square ones. A picture that is too small to
+ *    reach that size cleanly, or that is shaped like a logo or banner, is rejected (the next candidate is
+ *    tried by the caller).
+ * 3. The final cover is made from that upload: resized first, then the logo, so a crop cannot cut it off.
+ *    If Cloudinary refuses a step the next simpler one is tried (plain crop, then no logo): the picture is
+ *    kept at the right size rather than lost.
+ *
+ * Returns whether the logo made it onto the image so the editor can be told when it did not.
  */
 async function storeImage(src: string, uploadedBy: string) {
-  let logoApplied = true
-  let result
-  try {
-    await ensureWatermark()
-    result = await uploadToCloudinary(src, 'newsedition/articles', { transformation: watermarkTransformation() })
-  } catch {
-    // Logo step failed (Cloudinary rejected the overlay). Keep the picture rather than lose it.
-    logoApplied = false
-    result = await uploadToCloudinary(src, 'newsedition/articles', { transformation: [{ width: 1600, crop: 'limit' }] })
-  }
-  if ((result.width ?? 0) < MIN_COVER_WIDTH) {
-    await deleteFromCloudinary(result.public_id).catch(() => undefined)
+  const raw = await uploadToCloudinary(src, 'newsedition/articles', { transformation: [{ width: 1600, crop: 'limit' }] })
+  const discardRaw = () => deleteFromCloudinary(raw.public_id).catch(() => undefined)
+  if ((raw.width ?? 0) < MIN_COVER_WIDTH) {
+    await discardRaw()
     throw new Error('Image too small to be a news photo')
   }
-  if (looksLikeLogoShape(result.width, result.height)) {
-    await deleteFromCloudinary(result.public_id).catch(() => undefined)
-    throw new Error(`Image shape ${result.width}x${result.height} looks like a logo or banner, not a news photo`)
+  const plan = planCover(raw.width, raw.height)
+  if (plan.mode === 'reject') {
+    await discardRaw()
+    throw new Error(`Image rejected: ${plan.reason}`)
+  }
+
+  const attempts: { mode: 'fill' | 'pad'; logo: boolean }[] = [
+    { mode: plan.mode, logo: true },
+    ...(plan.mode === 'pad' ? [{ mode: 'fill' as const, logo: true }] : []),
+    { mode: 'fill', logo: false },
+  ]
+  let result
+  let logoApplied = false
+  let lastError: unknown = null
+  for (const attempt of attempts) {
+    try {
+      if (attempt.logo) await ensureWatermark()
+      result = await uploadToCloudinary(raw.secure_url, 'newsedition/articles', {
+        transformation: coverTransformation(coverResizeStep(attempt.mode), attempt.logo),
+      })
+      logoApplied = attempt.logo
+      break
+    } catch (e) {
+      lastError = e
+    }
+  }
+  await discardRaw()
+  if (!result) throw new Error(`Cover could not be resized to ${COVER_WIDTH}x${COVER_HEIGHT}: ${reasonOf(lastError)}`)
+  if (result.width !== COVER_WIDTH || result.height !== COVER_HEIGHT) {
+    console.warn(`Cover ${result.public_id} is ${result.width}x${result.height}, expected ${COVER_WIDTH}x${COVER_HEIGHT}`)
   }
   await db.insert(assets).values({
     name: `ai-news-${Date.now()}`,

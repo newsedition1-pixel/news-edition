@@ -130,7 +130,9 @@
     width: 100%;
     height: auto;
     object-fit: cover;
-    aspect-ratio: 16 / 9;
+    // The stored cover is 1200x630 (the size the page and the Open Graph tags announce); a 16:9 box would
+    // shave the sides off it and could clip the corner logo. Older covers keep their own shape and are cropped to this.
+    aspect-ratio: 1200 / 630;
   }
 
   figcaption {

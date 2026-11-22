@@ -22,13 +22,16 @@ export function ensureWatermark(): Promise<void> {
   return ready
 }
 
+/** The NewsEdition logo, bottom-right corner, 22% of the image width. Always the last step, after the resize. */
+function logoOverlayStep(): Record<string, unknown> {
+  return { overlay: WATERMARK_OVERLAY_ID, gravity: 'south_east', width: 0.22, flags: 'relative', x: 0.02, y: 0.03 }
+}
+
 /**
- * Incoming transformation applied while uploading a cover image: cap the width at 1600px and burn the
- * NewsEdition logo into the bottom-right corner at 22% of the image width.
+ * Incoming transformation for the final cover: the picture is brought to the standard cover size first
+ * (see `coverResizeStep`), then the logo is burned into the corner of the finished cover, so a crop can
+ * never cut the logo off.
  */
-export function watermarkTransformation(): Record<string, unknown>[] {
-  return [
-    { width: 1600, crop: 'limit' },
-    { overlay: WATERMARK_OVERLAY_ID, gravity: 'south_east', width: 0.22, flags: 'relative', x: 0.02, y: 0.03 },
-  ]
+export function coverTransformation(resize: Record<string, unknown>, withLogo: boolean): Record<string, unknown>[] {
+  return withLogo ? [resize, logoOverlayStep()] : [resize]
 }
