@@ -37,9 +37,11 @@ export async function writeXDraft(article: ArticleForSocial, wantPoll: boolean):
 export const TTS_MODEL = process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts'
 export const TTS_VOICE = process.env.OPENAI_TTS_VOICE || 'onyx'
 const TTS_STYLE = 'A calm, clear Indian news presenter. Neutral, factual tone, moderate pace, short natural pauses between sentences.'
+/** For the Hindi narration of the video: the text is Devanagari and must be read as Hindi, not as English with an accent. */
+export const TTS_STYLE_HINDI = 'A calm, clear Hindi news presenter. Read the Devanagari text as natural spoken Hindi, in a neutral, factual tone, at a moderate pace, with short natural pauses at each full stop. Say English acronyms the way Indian newsreaders do.'
 
 /** The text read aloud as an MP3, or null when there is no key, the call fails or it takes too long. Never throws. */
-export async function speak(text: string): Promise<Uint8Array | null> {
+export async function speak(text: string, style: string = TTS_STYLE): Promise<Uint8Array | null> {
   const key = process.env.OPENAI_API_KEY
   if (!key || !text.trim() || text.length > 1500) return null
   try {
@@ -47,7 +49,7 @@ export async function speak(text: string): Promise<Uint8Array | null> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       // `instructions` exists on the gpt-4o TTS models only; tts-1 would reject it.
-      body: JSON.stringify({ model: TTS_MODEL, voice: TTS_VOICE, input: text, response_format: 'mp3', ...(/^gpt-4o/i.test(TTS_MODEL) ? { instructions: TTS_STYLE } : {}) }),
+      body: JSON.stringify({ model: TTS_MODEL, voice: TTS_VOICE, input: text, response_format: 'mp3', ...(/^gpt-4o/i.test(TTS_MODEL) ? { instructions: style } : {}) }),
       signal: AbortSignal.timeout(45_000),
     })
     if (!res.ok) {

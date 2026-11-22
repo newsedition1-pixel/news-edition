@@ -62,14 +62,18 @@ def fit_voice(path, work):
     return fast
 
 
-def cues(spec, voice_s):
+def cues(spec, voice_s, spoken_words=None):
     """When each point, the source line and the call to action appear, so that the text shows as it is spoken.
 
     The narrator reads the headline and the points in order, after a 0.6 s lead-in. Where each sentence starts is
-    estimated from its share of the words (a pause counts as a little over one word).
+    estimated from its share of the words (a pause counts as a little over one word). `spoken_words` are the word
+    counts of what is actually said per frame text (the Hindi narration); without them the words on the frames count.
     """
     parts = [spec["headline"]] + list(spec["points"][:3])
-    weights = [len(t.split()) + 1.2 for t in parts]
+    counts = [len(t.split()) for t in parts]
+    if isinstance(spoken_words, list) and len(spoken_words) == len(parts) and all(isinstance(n, int) and n > 0 for n in spoken_words):
+        counts = spoken_words
+    weights = [n + 1.2 for n in counts]
     total = sum(weights)
     starts, run = [], 0.0
     for w in weights:
@@ -83,14 +87,14 @@ def cues(spec, voice_s):
     return {"points": pts, "source": round(max(pts[-1] + 1.5, end - 1.4), 2), "cta": round(max(pts[-1] + 2.2, end - 0.5), 2)}
 
 
-def render(spec, work, out, voice):
+def render(spec, work, out, voice, spoken_words=None):
     """Runs make_reel.py (isolated mode). A failed mix with the voice is retried without it: a video with music only beats none."""
     base = [sys.executable, "-I", os.path.join(HERE, "make_reel.py")]
     plain = os.path.join(work, "spec.json")
     json.dump(spec, open(plain, "w", encoding="utf-8"), ensure_ascii=False)
     if voice:
         timed = os.path.join(work, "spec-voice.json")
-        json.dump({**spec, "timing": cues(spec, media_seconds(voice))}, open(timed, "w", encoding="utf-8"), ensure_ascii=False)
+        json.dump({**spec, "timing": cues(spec, media_seconds(voice), spoken_words)}, open(timed, "w", encoding="utf-8"), ensure_ascii=False)
         print("Cues:", json.dumps(json.load(open(timed, encoding="utf-8"))["timing"]))
         if subprocess.run(base + [timed, out, voice]).returncode == 0:
             return True
@@ -129,7 +133,7 @@ def main():
     else:
         print("No voice from the site; music only.")
     out = os.path.join(work, "video.mp4")
-    if not render(spec, work, out, voice):
+    if not render(spec, work, out, voice, v.get("words")):
         print("The video could not be rendered.")
         return 1
     size = os.path.getsize(out)
