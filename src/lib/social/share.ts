@@ -158,6 +158,11 @@ export async function shareArticle(id: number, opts: { strength?: number } = {})
         ? { captions: { telegram: set.telegram.text, x: xSkip ? `(not posted: ${xSkip})` : describeX(xPost), facebook: set.facebook.text, instagram: set.instagram.text } }
         : {}),
     }
+    // One line per share in the runtime log, so "why did nothing go to X" can be answered without the admin screen.
+    console.log(
+      `Social share #${id}${dry ? ' (preview)' : ''}: ` +
+        Object.entries(results).map(([k, r]) => `${k}=${r.ok ? 'sent' : r.skipped ? `skipped (${r.skipped})` : `FAILED (${r.error ?? 'unknown'})`}`).join('; '),
+    )
     // Read the log again so a share that finished while this one was running is not lost.
     const latest = await loadShareLog()
     await setSetting(SOCIAL_LOG_KEY, JSON.stringify(addEntry(latest, entry)))
