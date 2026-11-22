@@ -81,6 +81,23 @@ def short_credit(probe, credit):
     return ["Photo credit in the caption"]
 
 
+def fit_scale(probe, spec, y, hsize, hstep, pfs, pstep, gap, limit):
+    """The largest text scale (1.0 down to 0.82) at which the headline (3 lines at most) and the points (2 lines each at
+    most) end above `limit`. A story whose text is within the character limits can still wrap into too many lines;
+    shrinking it a little beats having no video that day."""
+    for scale in (1.0, 0.94, 0.88, 0.82):
+        hf, pf = font(F_XB, round(hsize * scale)), font(F_MD, round(pfs * scale))
+        hlines = len(wrap(probe, spec["headline"], hf, TEXT_W))
+        end, ok = y + hlines * round(hstep * scale) + 18, hlines <= 3
+        for pt in spec["points"][:3]:
+            n = len(wrap(probe, pt, pf, TEXT_W - 60))
+            ok = ok and n <= 2
+            end += n * round(pstep * scale) + gap
+        if ok and end <= limit:
+            return scale
+    return 0.82
+
+
 def build(spec):
     probe = ImageDraw.Draw(Image.new("RGB", (W, H)))
     layers = []  # (image, start_sec)
@@ -144,6 +161,14 @@ def build(spec):
     cd.text((MARGIN + 28, chip_y + 11), spec["pillar"].upper(), font=pf, fill=WHITE)
     layers.append((chip, 0.2))
 
+    # Long text is scaled down together (headline and points) until it fits above the source line.
+    pfs, pstep, pgap = (40, 50, 16) if has_photo else (48, 64, 34)
+    limit = 1555 if has_photo else 1360
+    scale = fit_scale(probe, spec, y, hsize, hstep, pfs, pstep, pgap, limit)
+    if scale < 1.0:
+        print("Long text: scaled to %d%%." % round(scale * 100))
+    hsize, hstep, pfs, pstep = round(hsize * scale), round(hstep * scale), round(pfs * scale), round(pstep * scale)
+
     # Headline
     hl = layer()
     hd = ImageDraw.Draw(hl)
@@ -158,8 +183,6 @@ def build(spec):
     y += 18
 
     # Key points, revealed one by one
-    pfs = 40 if has_photo else 48
-    pstep = 50 if has_photo else 64
     pfnt = font(F_MD, pfs)
     # With a voice the caller passes spec["timing"] (see run.py) so that each point appears as it is spoken.
     timing = spec.get("timing") or {}
@@ -177,13 +200,12 @@ def build(spec):
         for ln in plines:
             pd.text((MARGIN + 46, yy), ln, font=pfnt, fill=WHITE)
             yy += pstep
-        y = yy + (16 if has_photo else 34)
+        y = yy + pgap
         at = float(cue_points[idx]) if idx < len(cue_points) else start
         layers.append((pl, at))
         point_times.append(at)
         start += 2.4
 
-    limit = 1555 if has_photo else 1360
     if y > limit:
         sys.exit("LAYOUT ERROR: text runs into the source line (%d > %d). Shorten the headline or points." % (y, limit))
 
