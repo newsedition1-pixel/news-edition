@@ -28,10 +28,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install fonts and Python packages
+        # Pillow and numpy come from apt (system site-packages): run.py starts make_reel.py with
+        # `python3 -I`, which ignores the user site where `pip install` puts packages. The first run
+        # (22 Nov 2026) failed with "No module named 'PIL'" for that reason.
         run: |
           set -eu
           sudo apt-get update -qq
-          sudo apt-get install -y -qq fonts-inter ffmpeg
-          python3 -m pip install --quiet pillow numpy
+          sudo apt-get install -y -qq fonts-inter ffmpeg python3-pil python3-numpy
+          python3 -I -c "import PIL, numpy; print('Pillow', PIL.__version__, 'numpy', numpy.__version__)"
       - name: Render and post the video
         run: python3 scripts/x-video/run.py
