@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { countWords, extractArticle, socialImageOf } from './articleText'
+import { countWords, extractArticle, imageCandidatesOf, socialImageOf } from './articleText'
 
 const para = (n: number) => `<p>${Array.from({ length: 30 }, (_, i) => `word${n}x${i}`).join(' ')}.</p>`
 const PAGE = `<html><head>
@@ -47,4 +47,29 @@ test('socialImageOf gives the og:image, else twitter:image, as an absolute URL',
   assert.equal(socialImageOf('<meta property="og:image" content="/img/a.jpg">', 'https://www.example.com/news/x'), 'https://www.example.com/img/a.jpg')
   assert.equal(socialImageOf('<meta name="twitter:image" content="https://cdn.example.com/b.jpg">', 'https://www.example.com/'), 'https://cdn.example.com/b.jpg')
   assert.equal(socialImageOf('<html></html>', 'https://www.example.com/'), null)
+})
+
+test('image candidates: og:image, twitter:image, then the article JSON-LD images, absolute and without repeats', () => {
+  const html = `<html><head>
+    <meta property="og:image" content="/img/og.jpg">
+    <meta name="twitter:image" content="https://cdn.example.com/tw.jpg">
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[
+      {"@type":"NewsArticle","image":["https://cdn.example.com/ld1.jpg",{"@type":"ImageObject","url":"/img/og.jpg"},{"url":"https://cdn.example.com/ld2.jpg"}]},
+      {"@type":"Organization","image":"https://cdn.example.com/brand-card.jpg","logo":{"url":"https://cdn.example.com/logo.png"}}
+    ]}</script></head><body></body></html>`
+  assert.deepEqual(imageCandidatesOf(html, 'https://www.example.com/news/x'), [
+    'https://www.example.com/img/og.jpg',
+    'https://cdn.example.com/tw.jpg',
+    'https://cdn.example.com/ld1.jpg',
+    'https://cdn.example.com/ld2.jpg',
+  ])
+  assert.deepEqual(imageCandidatesOf(html, 'https://www.example.com/news/x', 2).length, 2)
+  assert.deepEqual(imageCandidatesOf('<html></html>', 'https://www.example.com/'), [])
+})
+
+test('extractArticle keeps imageUrl as the first candidate and adds the rest', () => {
+  const html = '<meta property="og:image" content="https://cdn.example.com/a.jpg"><script type="application/ld+json">{"@type":"NewsArticle","image":"https://cdn.example.com/b.jpg"}</script>'
+  const a = extractArticle(html, 'https://www.thehindu.com/x')
+  assert.equal(a.imageUrl, 'https://cdn.example.com/a.jpg')
+  assert.deepEqual(a.imageCandidates, ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'])
 })

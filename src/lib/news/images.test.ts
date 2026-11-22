@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildImageCredit, classifyLicense, imageKey, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, parseCommonsPages, relevantImages, safeCoverPrompt } from './images'
+import { buildImageCredit, classifyLicense, imageKey, isPublicHttpsUrl, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, parseCommonsPages, relevantImages, safeCoverPrompt } from './images'
 
 const meta = (license: string, artist = 'Jane <a href="x">Doe</a>', description = 'Narendra Modi addressing a rally in Hisar') => ({
   LicenseShortName: { value: license },
@@ -97,4 +97,19 @@ test('the neutral illustration prompt has no people, no text and names the desk'
   assert.match(p, /no people/)
   assert.match(p, /no text/)
   assert.match(safeCoverPrompt(null), /news story/)
+})
+
+test('only https URLs on a public host may be downloaded by the server', () => {
+  assert.equal(isPublicHttpsUrl('https://th-i.thgim.com/public/a.jpg'), true)
+  assert.equal(isPublicHttpsUrl('http://th-i.thgim.com/public/a.jpg'), false)
+  assert.equal(isPublicHttpsUrl('https://localhost/a.jpg'), false)
+  assert.equal(isPublicHttpsUrl('https://intranet/a.jpg'), false)
+  assert.equal(isPublicHttpsUrl('https://127.0.0.1/a.jpg'), false)
+  assert.equal(isPublicHttpsUrl('https://169.254.169.254/latest/meta-data'), false)
+  assert.equal(isPublicHttpsUrl('https://[::1]/a.jpg'), false)
+  assert.equal(isPublicHttpsUrl('https://user:pw@example.com/a.jpg'), false)
+  assert.equal(isPublicHttpsUrl('https://example.com:8443/a.jpg'), false)
+  assert.equal(isPublicHttpsUrl('https://printer.local/a.jpg'), false)
+  assert.equal(isPublicHttpsUrl('not a url'), false)
+  assert.equal(isPublicHttpsUrl(null), false)
 })

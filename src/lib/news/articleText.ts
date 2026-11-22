@@ -10,6 +10,8 @@ export interface ExtractedArticle {
   paragraphs: string[]
   wordCount: number
   imageUrl: string | null
+  /** `imageUrl` first, then the page's other candidate pictures (twitter:image, JSON-LD images). */
+  imageCandidates: string[]
   imageCredit: string | null
   description: string | null
   /** Absolute links found inside the article body (used to find primary documents). */
@@ -114,6 +116,50 @@ export function socialImageOf(html: string, pageUrl: string): string | null {
   return raw ? absolute(raw, pageUrl) : null
 }
 
+/** Every `image` URL a JSON-LD article object declares (a string, a list, or `{ url }` objects). */
+function jsonLdImages(html: string): string[] {
+  const out: string[] = []
+  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html))) {
+    try {
+      const pick = (v: unknown): void => {
+        if (typeof v === 'string') out.push(v)
+        else if (Array.isArray(v)) v.forEach(pick)
+        else if (v && typeof v === 'object' && typeof (v as { url?: unknown }).url === 'string') out.push((v as { url: string }).url)
+      }
+      const walk = (node: unknown): void => {
+        if (!node || typeof node !== 'object') return
+        if (Array.isArray(node)) { node.forEach(walk); return }
+        const obj = node as Record<string, unknown>
+        // Only article objects: an Organization's `image` or `logo` is the brand, not the story's picture.
+        if (/article|posting/i.test(JSON.stringify(obj['@type'] ?? '')) && obj.image) pick(obj.image)
+        for (const v of Object.values(obj)) if (v && typeof v === 'object') walk(v)
+      }
+      walk(JSON.parse(m[1].trim()))
+    } catch {
+      /* malformed JSON-LD: ignore */
+    }
+  }
+  return out
+}
+
+/**
+ * The page's candidate cover pictures, best guess first: og:image, twitter:image, then the images the
+ * article's JSON-LD declares (often a different crop, sometimes one without the publisher's logo on it).
+ * Absolute, de-duplicated by exact URL, at most `max`.
+ */
+export function imageCandidatesOf(html: string, pageUrl: string, max = 4): string[] {
+  const raw = [metaContent(html, 'og:image'), metaContent(html, 'twitter:image'), ...jsonLdImages(html)]
+  const out: string[] = []
+  for (const r of raw) {
+    const url = r ? absolute(r, pageUrl) : null
+    if (url && !out.includes(url)) out.push(url)
+    if (out.length >= max) break
+  }
+  return out
+}
+
 export function extractArticle(html: string, pageUrl: string): ExtractedArticle {
   let paragraphs: string[] = []
 
@@ -143,6 +189,7 @@ export function extractArticle(html: string, pageUrl: string): ExtractedArticle 
     paragraphs,
     wordCount,
     imageUrl: socialImageOf(html, pageUrl),
+    imageCandidates: imageCandidatesOf(html, pageUrl),
     imageCredit: null,
     description: metaContent(html, 'og:description') || metaContent(html, 'description'),
     links: linksFromFragment(fragment, pageUrl),
