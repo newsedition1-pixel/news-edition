@@ -83,10 +83,10 @@ export function SocialCard({ initial }: { initial: SocialStatusData }) {
         </div>
       </div>
       <p className={styles.note}>
-        Each article goes out with its headline, a short summary and a few hashtags. Telegram gets every article; Instagram and Facebook get the top stories only
-        (up to {status.today.cap} a day between 7:00 and 23:00 IST, spread over the day; {status.today.top} chosen today).
+        Each article goes out with its headline, a short summary and a few hashtags. Telegram gets every article; Instagram and Facebook get up to {status.today.cap} a day
+        (between 7:00 and 23:00 IST, at least 25 minutes apart, spread over the day; {status.today.top} chosen today).
         {status.x.mode === 'growth'
-          ? ` X is in growth mode: the best stories only (${status.x.posts} of ${status.x.cap} tweets today), each with a hook and one checked fact, a photo when the cover is a real photo, and one poll a day in the evening (${status.x.polls} of ${status.x.pollCap} today). Links are kept for ${status.x.linkCap} tweets a day (${status.x.links} so far), because a tweet with a link costs far more on the X API.`
+          ? ` X is in growth mode (${status.x.posts} of ${status.x.cap} tweets today, at least 25 minutes apart), each with a hook and one checked fact, a photo when the cover is a real photo, and one poll a day in the evening (${status.x.polls} of ${status.x.pollCap} today). Links are kept for ${status.x.linkCap} tweets a day (${status.x.links} so far), because a tweet with a link costs far more on the X API.`
           : ' X is in legacy mode: every article is tweeted.'}
         {' '}Preview only writes the posts below without sending anything.
       </p>
@@ -111,7 +111,7 @@ export function SocialCard({ initial }: { initial: SocialStatusData }) {
           {status.recent.map((e) => (
             <details key={`${e.id}-${e.dry}`}>
               <summary>
-                {e.dry ? '[preview] ' : ''}{e.title} · {formatWhen(e.at)}{e.top ? ' · top story' : ''}
+                {e.dry ? '[preview] ' : ''}{e.title} · {formatWhen(e.at)}{e.top ? ' · feed post' : ''}
               </summary>
               <ul>
                 {Object.entries(e.results).map(([name, r]) => (
