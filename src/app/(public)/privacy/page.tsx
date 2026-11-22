@@ -17,7 +17,7 @@ export default function PrivacyPage() {
           Your privacy is important to us. This policy explains what information we collect, how
           we use it, and the choices you have.
         </p>
-        <p className={styles.updated}>Last updated: May 9, 2026 &nbsp;·&nbsp; Governing law: India</p>
+        <p className={styles.updated}>Last updated: November 22, 2026 &nbsp;·&nbsp; Governing law: India</p>
       </div>
 
       <div className={styles.section}>
@@ -95,11 +95,22 @@ export default function PrivacyPage() {
           </p>
           <h3>Google AdSense</h3>
           <p>
-            We display advertisements served by Google AdSense. Google uses cookies to serve ads
-            based on your prior visits to our site and other sites on the internet. You can opt
-            out of personalised advertising by visiting{' '}
+            We display, or may display, advertisements served by Google AdSense. Third-party
+            vendors, including Google, use cookies to serve ads based on your prior visits to our
+            site and other sites on the internet. Google&apos;s use of advertising cookies, such as
+            the DoubleClick (DART) cookie, enables it and its partners to serve ads to you based
+            on your visit to NewsEdition and/or other sites. You can opt out of personalised
+            advertising by visiting{' '}
             <a href="https://www.google.com/settings/ads" target="_blank" rel="noopener noreferrer">
               Google Ad Settings
+            </a>{' '}
+            or{' '}
+            <a href="https://optout.aboutads.info/" target="_blank" rel="noopener noreferrer">
+              aboutads.info
+            </a>
+            . To learn how Google uses information from sites that use its services, see{' '}
+            <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener noreferrer">
+              policies.google.com/technologies/partner-sites
             </a>.
           </p>
           <h3>Cloudinary</h3>
@@ -188,6 +199,10 @@ export default function PrivacyPage() {
             <a href="mailto:newsedition1@gmail.com">newsedition1@gmail.com</a>
             <br />
             C-43, Regal Building, Connaught Place, New Delhi — 110001, India.
+          </p>
+          <p>
+            Complaints about content or about how your data is handled can also go to our{' '}
+            <a href="/grievance">Grievance Officer</a>.
           </p>
         </div>
       </div>

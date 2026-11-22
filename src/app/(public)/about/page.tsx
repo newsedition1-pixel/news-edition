@@ -103,8 +103,12 @@ export default function AboutPage() {
             economies and lives, while ensuring no important story from any domain goes unreported.
           </p>
           <p>
-            We are committed to factual, unbiased reporting. Every story published goes through
-            editorial review to ensure accuracy and balance. We believe the press exists to inform,
+            We are committed to factual, unbiased reporting. Our stories are based on reports from
+            established Indian and international news organisations, which we name in each article,
+            and they are checked against those reports before they go live. Our{' '}
+            <Link href="/editorial-policy">Editorial Policy</Link> explains how we use automated tools
+            and when an editor reads a story first, and you can report a mistake on our{' '}
+            <Link href="/corrections">Corrections page</Link>. We believe the press exists to inform,
             not to sensationalise.
           </p>
         </div>
