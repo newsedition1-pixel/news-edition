@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { VIDEO_HEADLINE_ASK, VIDEO_HEADLINE_MAX, VIDEO_STORY_TRIES, alreadyVideoed, buildSpec, buildWordsPrompt, checkWords, dateLabel, isMp4, parseWords, pickVideoRow, pickVideoRows, publisherOf, videoLogId, videosToday, voiceScript, writeWords, type VideoRow } from './xvideo'
+import { HINDI_TOTAL_WORDS, VIDEO_HEADLINE_ASK, VIDEO_HEADLINE_MAX, VIDEO_STORY_TRIES, alreadyVideoed, buildHindiPrompt, buildSpec, buildWordsPrompt, checkHindi, checkWords, dateLabel, hindiScript, hindiWordCounts, isMp4, parseHindi, parseWords, pickVideoRow, pickVideoRows, publisherOf, videoLogId, videosToday, voiceScript, writeHindi, writeWords, type VideoRow } from './xvideo'
+import type { Message } from './xcopy'
 import type { ShareEntry } from './log'
 
 const NOW = new Date('2026-11-22T13:30:00Z')
@@ -102,4 +103,71 @@ test('the narrator reads the headline and the three points, one sentence each, a
   // at the longest allowed frame text it is still under the 1500 characters speak() accepts and about 20 s of speech
   const longest = voiceScript({ headline: 'h'.repeat(56), points: ['p'.repeat(70), 'p'.repeat(70), 'p'.repeat(70)] })
   assert.ok(longest.length < 1500)
+})
+
+// ── the Hindi narration ─────────────────────────────────────────────────────
+
+const frameText = { headline: 'RBI holds the repo rate at 5.5%', points: ['The central bank decided on Friday', 'Home loan EMIs stay the same', 'The next review is in December'] }
+const hindiLines = ['आरबीआई ने रेपो रेट साढ़े पाँच प्रतिशत पर ही रखा।', 'केंद्रीय बैंक ने यह फैसला शुक्रवार को सुनाया।', 'होम लोन लेने वालों की ईएमआई में कोई बदलाव नहीं होगा।', 'अगली समीक्षा दिसंबर में होगी।']
+
+test('the Hindi writer is given only the four frame texts and told to spell numbers and acronyms out', () => {
+  const { system, user } = buildHindiPrompt(frameText)
+  for (const t of [frameText.headline, ...frameText.points]) assert.ok(user.includes(t))
+  assert.match(system, /Devanagari/)
+  assert.match(system, /spell every number out/)
+  assert.match(system, /only the four lines given/)
+  assert.match(system, /Do not name any news outlet/)
+})
+
+test('a Hindi narration of four lines in Devanagari passes', () => {
+  assert.deepEqual(checkHindi(hindiLines), [])
+  assert.deepEqual(hindiWordCounts(hindiLines), [10, 8, 11, 5])
+})
+
+test('a Hindi narration with digits, Latin letters, symbols, the wrong length or an exclamation mark is rejected', () => {
+  const swap = (i: number, text: string) => hindiLines.map((l, j) => (j === i ? text : l))
+  assert.ok(checkHindi(swap(0, 'आरबीआई ने रेपो रेट 5.5 प्रतिशत पर ही रखा।')).some((m) => /digits/.test(m)))
+  assert.ok(checkHindi(swap(0, 'RBI ने रेपो रेट साढ़े पाँच प्रतिशत पर ही रखा।')).some((m) => /Latin/.test(m)))
+  assert.ok(checkHindi(swap(0, 'आरबीआई ने रेपो रेट साढ़े पाँच % पर ही रखा।')).length > 0)
+  assert.ok(checkHindi(swap(0, 'आरबीआई ने रेपो रेट ५.५ प्रतिशत पर ही रखा।')).length > 0) // Devanagari digits are read as unpredictably as Latin ones
+  assert.ok(checkHindi(swap(3, 'दिसंबर में समीक्षा होगी!')).some((m) => /exclamation/.test(m)))
+  assert.ok(checkHindi(hindiLines.slice(0, 3)).some((m) => /exactly 4 lines/.test(m)))
+  assert.ok(checkHindi(swap(1, 'केंद्रीय बैंक ने।')).some((m) => /Line 2/.test(m)))
+  assert.ok(checkHindi(swap(1, Array(21).fill('बैंक').join(' '))).some((m) => /Line 2/.test(m)))
+  assert.ok(checkHindi(['एक दो तीन चार।', 'एक दो तीन चार।', 'एक दो तीन चार।', 'एक दो तीन चार।']).some((m) => /in all/.test(m)))
+  assert.ok(checkHindi(['सब ठीक है।', 'सब ठीक है।', 'सब ठीक है।', 'सब ठीक है।']).some((m) => /in all/.test(m)))
+})
+
+test('the JSON of the Hindi writer must hold exactly four strings', () => {
+  assert.deepEqual(parseHindi({ lines: ['  क   ख ', 'ग', 'घ', 'ङ'] }), ['क ख', 'ग', 'घ', 'ङ'])
+  assert.equal(parseHindi({ lines: ['क', 'ख', 'ग'] }), null)
+  assert.equal(parseHindi({ lines: ['क', 'ख', 'ग', 4] }), null)
+  assert.equal(parseHindi({ lines: 'क ख ग घ' }), null)
+  assert.equal(parseHindi(null), null)
+})
+
+test('the Hindi script ends every line with one danda and stays far under the 1500 characters speak() takes', () => {
+  const text = hindiScript(['पहली पंक्ति.', 'दूसरी पंक्ति।', 'तीसरी पंक्ति ?', ' चौथी पंक्ति '])
+  assert.equal(text, 'पहली पंक्ति। दूसरी पंक्ति। तीसरी पंक्ति। चौथी पंक्ति।')
+  assert.doesNotMatch(text, /।।|\s{2}/)
+  const word = 'क'.repeat(15)
+  const longest = [15, 15, 14, 14].map((n) => Array(n).fill(word).join(' '))
+  assert.equal(longest.reduce((n, l) => n + l.split(' ').length, 0), HINDI_TOTAL_WORDS.max)
+  assert.ok(hindiScript(longest).length < 1500)
+})
+
+test('a rejected Hindi narration is written again with the reasons, and gives up after the second try', async () => {
+  const seen: Message[][] = []
+  const answers = [JSON.stringify({ lines: ['RBI ने रेपो रेट 5.5 प्रतिशत रखा।', hindiLines[1], hindiLines[2], hindiLines[3]] }), JSON.stringify({ lines: hindiLines })]
+  const ok = await writeHindi(async (m) => { seen.push(m.map((x) => ({ ...x }))); return answers.shift() ?? null }, frameText)
+  assert.deepEqual(ok.lines, hindiLines)
+  assert.equal(seen.length, 2)
+  assert.match(seen[1][seen[1].length - 1].content, /Rejected for:[\s\S]*digits/)
+
+  const bad = JSON.stringify({ lines: ['RBI', 'RBI', 'RBI', 'RBI'] })
+  const failed = await writeHindi(async () => bad, frameText)
+  assert.equal(failed.lines, null)
+  assert.ok(failed.issues.length > 0)
+  assert.equal((await writeHindi(async () => null, frameText)).lines, null)
+  assert.equal((await writeHindi(async () => 'not json', frameText)).lines, null)
 })

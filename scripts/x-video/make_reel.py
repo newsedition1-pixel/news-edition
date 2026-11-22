@@ -227,10 +227,10 @@ def build(spec):
     cd2 = ImageDraw.Draw(cl2)
     if has_photo:
         cd2.rectangle([0, 1640, W, 1740], fill=RED)
-        cd2.text((MARGIN, 1664), "Roz ki khabar  |  Follow " + spec["handle"], font=font(F_XB, 44), fill=WHITE)
+        cd2.text((MARGIN, 1664), "Daily news  |  Follow " + spec["handle"], font=font(F_XB, 44), fill=WHITE)
     else:
         cd2.rectangle([0, 1480, W, 1650], fill=RED)
-        cd2.text((MARGIN, 1507), "Roz 60 second mein khabar", font=font(F_XB, 52), fill=WHITE)
+        cd2.text((MARGIN, 1507), "Daily news in 60 seconds", font=font(F_XB, 52), fill=WHITE)
         cd2.text((MARGIN, 1578), "Follow " + spec["handle"], font=font(F_SB, 42), fill=WHITE)
     cta_at = float(timing.get("cta", 11.0))
     layers.append((cl2, cta_at))

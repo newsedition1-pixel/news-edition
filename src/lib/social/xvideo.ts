@@ -43,8 +43,12 @@ export interface VideoCandidate {
   spec: VideoSpec
   photoUrl: string
   photoCredit: string
-  /** The narration as an MP3 (base64) with the text it reads; absent when no voice could be made (the video then has music only). */
-  voice?: { mp3Base64: string; text: string }
+  /**
+   * The narration as an MP3 (base64) with the text it reads; absent when no voice could be made (the video then has music only).
+   * `words` (Hindi narration only): the number of spoken words per frame text (headline, then the three points), so that
+   * the workflow shows each text when it is spoken; without it the English word counts of the frame text are used.
+   */
+  voice?: { mp3Base64: string; text: string; lang?: 'hi' | 'en'; words?: number[] }
 }
 
 export interface VideoRow {
@@ -117,6 +121,90 @@ export function pickVideoRow(rows: VideoRow[], log: ShareEntry[], now: Date): Vi
 export function voiceScript(w: VideoWords): string {
   const sentence = (t: string) => t.trim().replace(/[.!?\s]+$/, '')
   return [w.headline, ...w.points].map(sentence).filter(Boolean).join('. ') + '.'
+}
+
+// ── the Hindi narration (owner decision 22 Nov 2026: English text on the frames, Hindi voice) ──
+
+/** Spoken words per narration line (a line narrates one frame text) and in all. About 2.6 spoken Hindi words a second, so 58 words stay under the 21.5 s the workflow accepts. */
+export const HINDI_LINE_WORDS = { min: 4, max: 20 }
+export const HINDI_TOTAL_WORDS = { min: 28, max: 58 }
+
+/** Anything but Devanagari letters and plain punctuation: digits, Latin letters, symbols and emoji are read unpredictably by the voice. */
+const NOT_HINDI_RE = /[^ऀ-॥॰-ॿ\s,.?'"‘’“”\-–—]/u
+
+const spokenWords = (line: string): number => line.trim().split(/\s+/).filter(Boolean).length
+
+/**
+ * The prompt for the Hindi narration. The writer sees only the four frame texts, which already passed
+ * the checks (every figure and name is in the article), so it cannot bring in a new fact.
+ */
+export function buildHindiPrompt(w: VideoWords): { system: string; user: string } {
+  const system = [
+    'You write the spoken narration, in Hindi (Devanagari script), of a 14-second vertical news video for NewsEdition, an Indian news site.',
+    'The viewer reads four short English text lines on the screen and hears you say the same four facts in Hindi.',
+    'Use only the four lines given: add no fact, figure, name, place or date that is not in them, and leave none of their facts out.',
+    'Return JSON: {"lines": [string, string, string, string]}. Line 1 narrates the headline, lines 2 to 4 narrate the three points, in the same order.',
+    `Style: plain, natural spoken Hindi, the way a news anchor talks to someone watching on a phone (everyday Hindi, no heavy Sanskrit words). Each line is one short sentence of ${HINDI_LINE_WORDS.min + 1} to ${HINDI_LINE_WORDS.max - 2} words; ${HINDI_TOTAL_WORDS.min + 2} to ${HINDI_TOTAL_WORDS.max - 8} words in all.`,
+    'Write for the ear: spell every number out in Hindi words (5.5% becomes साढ़े पाँच प्रतिशत) and write English acronyms and names in Devanagari (RBI becomes आरबीआई). No digits, no Latin letters, no symbols, no emoji, no exclamation marks, no clickbait.',
+    'Do not name any news outlet and do not say "according to".',
+  ].join('\n')
+  const user = [`Headline: ${w.headline}`, ...w.points.map((p, i) => `Point ${i + 1}: ${p}`)].join('\n')
+  return { system, user }
+}
+
+export function parseHindi(raw: unknown): string[] | null {
+  if (!raw || typeof raw !== 'object') return null
+  const lines = (raw as { lines?: unknown }).lines
+  if (!Array.isArray(lines) || lines.length !== 4 || !lines.every((l) => typeof l === 'string')) return null
+  return (lines as string[]).map((l) => l.replace(/\s+/g, ' ').trim())
+}
+
+/** The reasons a narration is rejected; none means it can be read aloud. */
+export function checkHindi(lines: string[]): string[] {
+  const issues: string[] = []
+  if (lines.length !== 4) return ['There must be exactly 4 lines: the headline, then the three points.']
+  lines.forEach((l, i) => {
+    const n = spokenWords(l)
+    if (n < HINDI_LINE_WORDS.min || n > HINDI_LINE_WORDS.max) issues.push(`Line ${i + 1} must be ${HINDI_LINE_WORDS.min} to ${HINDI_LINE_WORDS.max} words (it is ${n}).`)
+  })
+  const total = lines.reduce((sum, l) => sum + spokenWords(l), 0)
+  if (total < HINDI_TOTAL_WORDS.min || total > HINDI_TOTAL_WORDS.max) issues.push(`The narration must be ${HINDI_TOTAL_WORDS.min} to ${HINDI_TOTAL_WORDS.max} words in all (it is ${total}).`)
+  const all = lines.join(' ')
+  if (!/[ऀ-ॿ]/.test(all) || NOT_HINDI_RE.test(all)) issues.push('Use Devanagari words and plain punctuation only: no digits, Latin letters, symbols or emoji (write numbers and acronyms out in Devanagari).')
+  if (/!/.test(all)) issues.push('No exclamation marks.')
+  return issues
+}
+
+/** What the voice reads: the four lines, each closed with a danda, so the voice pauses between them. */
+export function hindiScript(lines: string[]): string {
+  return lines.map((l) => l.trim().replace(/[.।?!\s]+$/u, '')).filter(Boolean).map((l) => `${l}।`).join(' ')
+}
+
+/** Spoken words per line, for timing the frame texts. */
+export function hindiWordCounts(lines: string[]): number[] {
+  return lines.map(spokenWords)
+}
+
+/** Asks for the Hindi narration of the frame text, checks it and asks once more with the reasons when it fails. Null lines: the English narration is used instead. */
+export async function writeHindi(ask: (m: Message[]) => Promise<string | null>, w: VideoWords): Promise<{ lines: string[] | null; issues: string[] }> {
+  const { system, user } = buildHindiPrompt(w)
+  const messages: Message[] = [{ role: 'system', content: system }, { role: 'user', content: user }]
+  let issues: string[] = []
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const raw = await ask(messages)
+    if (!raw) return { lines: null, issues: ['The writer did not answer.'] }
+    let parsed: unknown = null
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      /* handled below */
+    }
+    const lines = parseHindi(parsed)
+    issues = lines ? checkHindi(lines) : ['The answer was not the JSON that was asked for.']
+    if (lines && issues.length === 0) return { lines, issues }
+    messages.push({ role: 'assistant', content: raw }, { role: 'user', content: `Rejected for:\n- ${issues.join('\n- ')}\nReturn corrected JSON.` })
+  }
+  return { lines: null, issues }
 }
 
 export function buildSpec(row: VideoRow, words: VideoWords, now: Date): VideoSpec {

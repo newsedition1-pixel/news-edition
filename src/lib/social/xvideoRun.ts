@@ -8,8 +8,11 @@ import { addEntry, scrub, type ShareEntry } from './log'
 import { loadArticle, loadShareLog } from './share'
 import { composeXPost } from './xcopy'
 import { X_VIDEO_DAILY_CAP } from './xplan'
-import { VIDEO_MAX_AGE_MS, alreadyVideoed, buildSpec, pickVideoRows, videoLogId, videosToday, voiceScript, writeWords, type VideoCandidate, type VideoRow } from './xvideo'
-import { askJson, speak, writeXDraft } from './xwriter'
+import { VIDEO_MAX_AGE_MS, alreadyVideoed, buildSpec, hindiScript, hindiWordCounts, pickVideoRows, videoLogId, videosToday, voiceScript, writeHindi, writeWords, type VideoCandidate, type VideoRow } from './xvideo'
+import { TTS_STYLE_HINDI, askJson, speak, writeXDraft } from './xwriter'
+
+/** Language of the narration: Hindi by default (the text on the frames stays English); X_VIDEO_VOICE=en reads the English frame text instead. */
+const HINDI_VOICE = process.env.X_VIDEO_VOICE !== 'en'
 
 type Gate = { skip: string } | null
 
@@ -49,11 +52,14 @@ export async function videoCandidate(now = new Date(), opts: { test?: boolean } 
       failed = `the video text did not pass the checks: ${issues.join(' ')}`
       continue
     }
-    // The narration: the words on the frames, read aloud. No voice (no key, a failed call) is not an error: the video then has music only.
-    const text = voiceScript(words)
-    const audio = await speak(text)
-    const voice = audio ? { mp3Base64: Buffer.from(audio).toString('base64'), text } : undefined
-    console.log(`X video voice: ${voice ? `${audio!.byteLength} bytes` : 'none (music only)'}`)
+    // The narration: the same four facts as the frame text, in Hindi (22 Nov 2026: English text, Hindi voice). When the Hindi does
+    // not pass its checks the English frame text is read instead. No voice (no key, a failed call) is not an error: the video then has music only.
+    const hindi = HINDI_VOICE ? await writeHindi((m) => askJson(m, 900), words) : { lines: null, issues: [] as string[] }
+    if (HINDI_VOICE && !hindi.lines) console.log(`X video Hindi narration rejected, reading the English text: ${hindi.issues.join(' ')}`)
+    const text = hindi.lines ? hindiScript(hindi.lines) : voiceScript(words)
+    const audio = await speak(text, hindi.lines ? TTS_STYLE_HINDI : undefined)
+    const voice = audio ? { mp3Base64: Buffer.from(audio).toString('base64'), text, ...(hindi.lines ? { lang: 'hi' as const, words: hindiWordCounts(hindi.lines) } : { lang: 'en' as const }) } : undefined
+    console.log(`X video voice: ${voice ? `${audio!.byteLength} bytes, ${voice.lang}` : 'none (music only)'}`)
     return { candidate: { id: pick.row.id, slug: pick.row.slug, title: pick.row.title, spec: buildSpec(pick.row, words, now), photoUrl: pick.photoUrl, photoCredit: pick.credit, ...(voice ? { voice } : {}) } }
   }
   return { skip: failed.slice(0, 400) }
