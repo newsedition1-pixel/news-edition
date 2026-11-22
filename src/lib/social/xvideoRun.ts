@@ -8,7 +8,7 @@ import { addEntry, scrub, type ShareEntry } from './log'
 import { loadArticle, loadShareLog } from './share'
 import { composeXPost } from './xcopy'
 import { X_VIDEO_DAILY_CAP } from './xplan'
-import { VIDEO_MAX_AGE_MS, alreadyVideoed, buildSpec, pickVideoRow, videoLogId, videosToday, writeWords, type VideoCandidate, type VideoRow } from './xvideo'
+import { VIDEO_MAX_AGE_MS, alreadyVideoed, buildSpec, pickVideoRows, videoLogId, videosToday, writeWords, type VideoCandidate, type VideoRow } from './xvideo'
 import { askJson, writeXDraft } from './xwriter'
 
 type Gate = { skip: string } | null
@@ -35,13 +35,22 @@ export async function videoCandidate(now = new Date()): Promise<{ skip: string }
     .where(and(eq(articles.status, 'published'), gte(articles.publishedAt, new Date(now.getTime() - VIDEO_MAX_AGE_MS))))
     .orderBy(desc(articles.publishedAt))
     .limit(40)
-  const pick = pickVideoRow(rows, log, now)
-  if (!pick) return { skip: 'no recent story with a credited photo and a safe topic' }
-  const loaded = await loadArticle(pick.row.id)
-  if (!loaded) return { skip: 'article not found' }
-  const { words, issues } = await writeWords((m) => askJson(m, 500), loaded.article)
-  if (!words) return { skip: `the video text did not pass the checks: ${issues.join(' ')}`.slice(0, 400) }
-  return { candidate: { id: pick.row.id, slug: pick.row.slug, title: pick.row.title, spec: buildSpec(pick.row, words, now), photoUrl: pick.photoUrl, photoCredit: pick.credit } }
+  const picks = pickVideoRows(rows, log, now)
+  if (picks.length === 0) return { skip: 'no recent story with a credited photo and a safe topic' }
+  // The first story whose on-screen text passes the checks; the next one is tried when it does not
+  // (22 Nov 2026: the only story tried had a 57-character headline, so no video went out that day).
+  let failed = 'article not found'
+  for (const pick of picks) {
+    const loaded = await loadArticle(pick.row.id)
+    if (!loaded) continue
+    const { words, issues } = await writeWords((m) => askJson(m, 500), loaded.article)
+    if (!words) {
+      failed = `the video text did not pass the checks: ${issues.join(' ')}`
+      continue
+    }
+    return { candidate: { id: pick.row.id, slug: pick.row.slug, title: pick.row.title, spec: buildSpec(pick.row, words, now), photoUrl: pick.photoUrl, photoCredit: pick.credit } }
+  }
+  return { skip: failed.slice(0, 400) }
 }
 
 export interface VideoOutcome {

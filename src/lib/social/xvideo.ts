@@ -16,6 +16,10 @@ export const X_VIDEO_MAX_UPLOAD = 4 * 1024 * 1024
 /** Only stories this fresh are turned into a video. */
 export const VIDEO_MAX_AGE_MS = 36 * 60 * 60 * 1000
 export const VIDEO_HEADLINE_MAX = 56
+/** What the writer is asked for: a margin under the hard limit, because models miscount characters (22 Nov 2026: 57 against 56, twice). */
+export const VIDEO_HEADLINE_ASK = 48
+/** Stories tried in one run when the words of the first do not pass the checks. */
+export const VIDEO_STORY_TRIES = 3
 export const VIDEO_POINT_MAX = 70
 export const VIDEO_HANDLE = '@NewsEdition_1'
 
@@ -78,17 +82,30 @@ export function publisherOf(content: string): string | null {
   return m ? m[1].trim() : null
 }
 
-/** The newest recent story that has a credited photo, is not about harm, crime, faith or party politics, and has no video yet. */
-export function pickVideoRow(rows: VideoRow[], log: ShareEntry[], now: Date): { row: VideoRow; photoUrl: string; credit: string } | null {
+export interface VideoPick {
+  row: VideoRow
+  photoUrl: string
+  credit: string
+}
+
+/** The newest recent stories (at most `limit`) that have a credited photo, are not about harm, crime, faith or party politics, and have no video yet. */
+export function pickVideoRows(rows: VideoRow[], log: ShareEntry[], now: Date, limit = VIDEO_STORY_TRIES): VideoPick[] {
+  const picks: VideoPick[] = []
   for (const row of rows) {
+    if (picks.length >= limit) break
     if (!row.publishedAt || now.getTime() - row.publishedAt.getTime() > VIDEO_MAX_AGE_MS) continue
     if (alreadyVideoed(log, row.id) || isSensitive({ title: row.title, excerpt: row.excerpt })) continue
     const cover = coverOf(row.content)
     const photoUrl = reelPhotoUrl(row.coverImage)
     if (cover.kind !== 'photo' || !cover.credit || !photoUrl) continue
-    return { row, photoUrl, credit: cover.credit }
+    picks.push({ row, photoUrl, credit: cover.credit })
   }
-  return null
+  return picks
+}
+
+/** The newest such story, or null. */
+export function pickVideoRow(rows: VideoRow[], log: ShareEntry[], now: Date): VideoPick | null {
+  return pickVideoRows(rows, log, now, 1)[0] ?? null
 }
 
 export function buildSpec(row: VideoRow, words: VideoWords, now: Date): VideoSpec {
@@ -124,7 +141,7 @@ export function buildWordsPrompt(a: ArticleForSocial): { system: string; user: s
     'You write the on-screen text of a 14-second vertical news video for NewsEdition, an Indian news site.',
     'Use only the article given: every figure, name, place and date must be in it.',
     `Return JSON: {"headline": string, "points": [string, string, string]}.`,
-    `headline: ${20} to ${VIDEO_HEADLINE_MAX} characters, the story in plain words, no clickbait, no exclamation marks.`,
+    `headline: 20 to ${VIDEO_HEADLINE_ASK} characters (count them; anything over ${VIDEO_HEADLINE_MAX} is rejected), the story in plain words, no clickbait, no exclamation marks.`,
     `points: exactly three short lines, 15 to ${VIDEO_POINT_MAX} characters each, one fact each, in the order a reader needs them (what happened, who it affects, what next). No emoji, no hashtags, no links.`,
   ].join('\n')
   const user = [`Headline: ${plain(a.title)}`, a.excerpt ? `Summary: ${plain(a.excerpt)}` : '', `Article:\n${htmlToText(a.content ?? '').slice(0, 3000)}`].filter(Boolean).join('\n\n')
