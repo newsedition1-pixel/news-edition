@@ -171,6 +171,52 @@ export function looksLikeLogoShape(width: number | null | undefined, height: num
   return h < 300 || ratio > 3.2 || ratio < 0.5
 }
 
+/** The one size every stored cover has: the Open Graph / Google Discover size the article page and meta tags announce. */
+export const COVER_WIDTH = 1200
+export const COVER_HEIGHT = 630
+/** A picture needing more enlargement than this to reach the cover size would look soft, so the next picture is tried instead. */
+export const MAX_COVER_UPSCALE = 2
+/** Below this width/height ratio the picture is near-square or portrait: cropping it to the wide cover would cut off most of it. */
+const CROP_MIN_RATIO = 1.25
+
+export type CoverPlan =
+  | {
+      /** `fill`: smart crop to the cover shape. `pad`: the whole picture on a blurred copy of itself (portrait and near-square pictures). */
+      mode: 'fill' | 'pad'
+      /** How much the picture is enlarged (1 = not at all, below 1 = reduced). */
+      scale: number
+    }
+  | { mode: 'reject'; reason: string }
+
+/**
+ * Decides how a picture of the given size becomes a 1200x630 cover. Every accepted picture ends up exactly
+ * that size, so the page, the Open Graph tags and the share cards all agree; a picture that cannot get
+ * there without a visible loss of quality is rejected and the next candidate (another picture, Wikimedia,
+ * the AI illustration) is used.
+ */
+export function planCover(width: number | null | undefined, height: number | null | undefined): CoverPlan {
+  const w = width ?? 0
+  const h = height ?? 0
+  if (w <= 0 || h <= 0) return { mode: 'reject', reason: 'picture size unknown' }
+  if (looksLikeLogoShape(w, h)) return { mode: 'reject', reason: `shape ${w}x${h} looks like a logo or banner, not a news photo` }
+  const mode = w / h >= CROP_MIN_RATIO ? 'fill' : 'pad'
+  // fill covers the whole cover (the larger of the two ratios); pad fits inside it (the smaller).
+  const scale = mode === 'fill' ? Math.max(COVER_WIDTH / w, COVER_HEIGHT / h) : Math.min(COVER_WIDTH / w, COVER_HEIGHT / h)
+  if (scale > MAX_COVER_UPSCALE) return { mode: 'reject', reason: `picture ${w}x${h} is too small for a ${COVER_WIDTH}x${COVER_HEIGHT} cover` }
+  return { mode, scale }
+}
+
+/**
+ * The Cloudinary resize step that turns a picture into the {@link COVER_WIDTH}x{@link COVER_HEIGHT} cover.
+ * `fill` is the smart crop, `pad` keeps the whole picture on a blurred copy of itself, and `plain` is the
+ * last resort: a centre crop with no gravity or background option for Cloudinary to refuse.
+ */
+export function coverResizeStep(mode: 'fill' | 'pad' | 'plain'): Record<string, unknown> {
+  if (mode === 'pad') return { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'pad', background: 'blurred:400:15' }
+  if (mode === 'plain') return { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill' }
+  return { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill', gravity: 'auto' }
+}
+
 /** A prompt for the last-resort illustration that image models do not refuse: abstract, no people, nothing violent. */
 export function safeCoverPrompt(categorySlug: string | null | undefined): string {
   const topic = (categorySlug || 'news').replace(/[-_]+/g, ' ').trim() || 'news'

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildImageCredit, classifyLicense, imageKey, isPublicHttpsUrl, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, parseCommonsPages, relevantImages, safeCoverPrompt } from './images'
+import { buildImageCredit, classifyLicense, COVER_HEIGHT, COVER_WIDTH, coverResizeStep, imageKey, isPublicHttpsUrl, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, parseCommonsPages, planCover, relevantImages, safeCoverPrompt } from './images'
 
 const meta = (license: string, artist = 'Jane <a href="x">Doe</a>', description = 'Narendra Modi addressing a rally in Hisar') => ({
   LicenseShortName: { value: license },
@@ -89,6 +89,47 @@ test('logo and banner shapes are rejected, news photo shapes are kept', () => {
   assert.equal(looksLikeLogoShape(2400, 600), true)
   assert.equal(looksLikeLogoShape(600, 1400), true)
   assert.equal(looksLikeLogoShape(null, null), false)
+})
+
+test('landscape pictures are cropped to the 1200x630 cover, portrait and near-square ones are padded', () => {
+  // Already the cover shape, a 16:9 wire photo and a 3:2 camera photo (and the 3:2 AI illustration): smart crop.
+  for (const [w, h] of [[1200, 630], [1200, 675], [1600, 1067], [1536, 1024], [1600, 900]]) {
+    const plan = planCover(w, h)
+    assert.equal(plan.mode, 'fill', `${w}x${h}`)
+  }
+  // A tall publisher photo and a square one keep their whole picture on a blurred background.
+  assert.equal(planCover(1000, 1500).mode, 'pad')
+  assert.equal(planCover(1200, 1200).mode, 'pad')
+  assert.equal(planCover(1200, 1000).mode, 'pad')
+})
+
+test('a picture that would need a big enlargement or is shaped like a logo is rejected', () => {
+  assert.equal(planCover(600, 315).mode, 'fill') // exactly 2x: still allowed
+  assert.equal(planCover(500, 262).mode, 'reject')
+  assert.equal(planCover(800, 800).mode, 'pad') // fits inside 1200x630 at 0.79x
+  assert.equal(planCover(400, 200).mode, 'reject') // under 300 px high counts as a thumbnail or logo
+  const logo = planCover(2400, 600)
+  assert.equal(logo.mode, 'reject')
+  assert.match(logo.mode === 'reject' ? logo.reason : '', /logo or banner/)
+  assert.equal(planCover(null, 900).mode, 'reject')
+})
+
+test('the scale of a plan says how much the picture is enlarged', () => {
+  const same = planCover(1200, 630)
+  assert.equal(same.mode === 'reject' ? NaN : same.scale, 1)
+  const down = planCover(2400, 1260)
+  assert.equal(down.mode === 'reject' ? NaN : down.scale, 0.5)
+  const up = planCover(900, 473)
+  assert.ok(up.mode !== 'reject' && up.scale > 1.3 && up.scale < 1.4)
+})
+
+test('the resize step is exactly the cover size, smart crop or blurred padding', () => {
+  assert.deepEqual(coverResizeStep('fill'), { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill', gravity: 'auto' })
+  assert.deepEqual(coverResizeStep('pad'), { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'pad', background: 'blurred:400:15' })
+  // The last-resort step has no gravity or background option, so Cloudinary has nothing to refuse.
+  assert.deepEqual(coverResizeStep('plain'), { width: COVER_WIDTH, height: COVER_HEIGHT, crop: 'fill' })
+  assert.equal(COVER_WIDTH, 1200)
+  assert.equal(COVER_HEIGHT, 630)
 })
 
 test('the neutral illustration prompt has no people, no text and names the desk', () => {
