@@ -40,6 +40,7 @@ F_XB, F_SB, F_MD = pick_font("Inter-ExtraBold.otf"), pick_font("Inter-SemiBold.o
 MARGIN = 70
 TEXT_W = W - 2 * MARGIN
 PHOTO_Y, PHOTO_H = 240, 640
+SIZE_BUDGET_BITS = 3_550_000 * 8  # target size of the whole MP4 (the upload limit is 4 MB)
 SR = 44100
 
 
@@ -379,7 +380,10 @@ def main():
         cmd += ["-filter_complex", flt, "-map", "0:v", "-map", "[a]"]
     else:
         cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
-    cmd += ["-t", str(dur), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", "2M", "-bufsize", "4M",
+    # The site takes a video up to 4 MB: cap the video rate so that the whole file stays near 3.5 MB however long
+    # the voice makes it (2 Mbps up to 14 s, about 1.4 Mbps at 19 s, about 1.1 Mbps at 24 s; audio is 96 kbps).
+    vrate = max(600_000, min(2_000_000, int(SIZE_BUDGET_BITS / dur) - 96_000))
+    cmd += ["-t", str(dur), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", str(vrate), "-bufsize", str(2 * vrate),
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", out]
     ff = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
