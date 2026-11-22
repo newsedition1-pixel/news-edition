@@ -125,9 +125,13 @@ export function voiceScript(w: VideoWords): string {
 
 // ── the Hindi narration (owner decision 22 Nov 2026: English text on the frames, Hindi voice) ──
 
-/** Spoken words per narration line (a line narrates one frame text) and in all. About 2.6 spoken Hindi words a second, so 58 words stay under the 21.5 s the workflow accepts. */
+/**
+ * Spoken words per narration line (a line narrates one frame text) and in all. Measured on the first live test (22 Nov 2026):
+ * 44 words took 22.2 s, about 2 words a second. The workflow takes up to 21.5 s of voice, sped up by at most x1.25 (about 26 s),
+ * so 50 words is the ceiling; more would lose the voice and leave music only.
+ */
 export const HINDI_LINE_WORDS = { min: 4, max: 20 }
-export const HINDI_TOTAL_WORDS = { min: 28, max: 58 }
+export const HINDI_TOTAL_WORDS = { min: 28, max: 50 }
 
 /** Anything but Devanagari letters and plain punctuation: digits, Latin letters, symbols and emoji are read unpredictably by the voice. */
 const NOT_HINDI_RE = /[^ऀ-॥॰-ॿ\s,.?'"‘’“”\-–—]/u
