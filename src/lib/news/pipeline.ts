@@ -10,7 +10,9 @@ import { fetchTrustedArticle, type TrustedArticle } from './feeds'
 import { assessArticle, htmlToText, sanitizeArticleHtml, type QualityReport } from './quality'
 import { auditArticle, betterAudit, chooseSeo, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, type AuditMode, type AuditResult, type AuditSummary, type LlmFindings } from './audit'
 import { assembleArticleHtml, primaryDocumentLinks, type ExternalSource } from './links'
-import { buildImageCredit, buildPublisherImageCredit, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, safeCoverPrompt, searchCommonsImage } from './images'
+import { buildImageCredit, buildPublisherImageCredit, imageKey, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, safeCoverPrompt, searchCommonsImage } from './images'
+import { checkImageForBrandLogo } from '@/lib/ai/logoCheck'
+import { logoCheckEnabled } from '@/lib/ai/logoPrompt'
 import { publisherSiteImage } from './siteImage'
 import { ensureWatermark, watermarkTransformation } from './watermark'
 import { finalizeSeo, finalizeTags, rankInternalCandidates, type PublishedRow } from './meta'
@@ -84,6 +86,9 @@ const MIN_TOTAL_WORDS = 350
 const MAX_REPORTS = 3
 
 const MIN_COVER_WIDTH = 600
+/** Pictures tried per publisher page, and vision checks per story (each is one model call). */
+const MAX_PICTURES_PER_REPORT = 3
+const MAX_LOGO_CHECKS = 4
 
 /**
  * Uploads a cover image with the NewsEdition logo burned into the corner. Images narrower than
@@ -288,27 +293,58 @@ async function pickCover(
   }
 
   // The news photo: the picture the publisher itself used for the story (credited to the publisher).
-  // A logo, a placeholder or the publisher's site-wide share image is never a news photo.
+  // A logo, a placeholder or the publisher's site-wide share image is never a news photo, and neither is
+  // a picture with a media brand's logo, watermark or credit stamp printed on it (a vision check, before
+  // the upload). When one candidate fails, the page's other candidates and the other publishers' pictures
+  // are tried; if none is clean the chain moves on to Wikimedia and the AI illustration.
   const newsPhoto = async (): Promise<Cover | null> => {
+    const checkLogos = logoCheckEnabled(process.env.NEWS_COVER_LOGO_CHECK)
+    const seen = new Set<string>()
+    let checks = 0
     for (const r of reports) {
       const who = r.publisher.name
-      if (!r.imageUrl) {
+      const candidates = r.imageCandidates.slice(0, MAX_PICTURES_PER_REPORT)
+      if (candidates.length === 0) {
         notes.push(`${who}: no photo on the page`)
         continue
       }
-      if (looksLikePlaceholderImage(r.imageUrl)) {
-        notes.push(`${who}: logo or placeholder`)
-        continue
-      }
-      if (isSiteDefaultImage(r.imageUrl, await publisherSiteImage(r.publisher))) {
-        notes.push(`${who}: site-wide share image, not a news photo`)
-        continue
-      }
-      try {
-        const stored = await storeImage(r.imageUrl, uploadedBy)
-        return { ...stored, alt: article.imageAlt, creditHtml: buildPublisherImageCredit(who, r.finalUrl), kind: 'publisher' }
-      } catch (e) {
-        notes.push(`${who}: ${reasonOf(e)}`)
+      const siteImage = await publisherSiteImage(r.publisher)
+      for (const url of candidates) {
+        const key = imageKey(url)
+        if (key) {
+          if (seen.has(key)) continue
+          seen.add(key)
+        }
+        if (looksLikePlaceholderImage(url)) {
+          notes.push(`${who}: logo or placeholder`)
+          continue
+        }
+        if (isSiteDefaultImage(url, siteImage)) {
+          notes.push(`${who}: site-wide share image, not a news photo`)
+          continue
+        }
+        if (checkLogos) {
+          if (checks >= MAX_LOGO_CHECKS) {
+            notes.push('Publisher photos: logo-check limit reached, no more pictures tried')
+            return null
+          }
+          checks++
+          const verdict = await checkImageForBrandLogo(url)
+          if ('error' in verdict) {
+            notes.push(`${who}: logo check could not run (${verdict.error}), picture not used`)
+            continue
+          }
+          if (verdict.hasLogo) {
+            notes.push(`${who}: brand logo on the picture (${verdict.marks.join(', ').slice(0, 80)}), picture not used`)
+            continue
+          }
+        }
+        try {
+          const stored = await storeImage(url, uploadedBy)
+          return { ...stored, alt: article.imageAlt, creditHtml: buildPublisherImageCredit(who, r.finalUrl), kind: 'publisher' }
+        } catch (e) {
+          notes.push(`${who}: ${reasonOf(e)}`)
+        }
       }
     }
     return null

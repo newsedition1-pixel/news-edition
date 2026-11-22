@@ -144,6 +144,24 @@ export function isSiteDefaultImage(url: string | null | undefined, siteImageUrl:
   return !!a && !!b && a === b
 }
 
+/**
+ * True for an https URL on a public-looking host: not an IP address, not localhost, not a one-label
+ * host. Guards the one place the server downloads a picture itself (the logo check's fallback).
+ */
+export function isPublicHttpsUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' || u.username || u.password || (u.port && u.port !== '443')) return false
+    const host = u.hostname.toLowerCase()
+    if (!host.includes('.') || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return false
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':') || host.startsWith('[')) return false
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Logos and banners are very wide, very tall or very short; a news photo is none of those. */
 export function looksLikeLogoShape(width: number | null | undefined, height: number | null | undefined): boolean {
   const w = width ?? 0
