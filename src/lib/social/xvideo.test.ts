@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { VIDEO_HEADLINE_ASK, VIDEO_HEADLINE_MAX, VIDEO_STORY_TRIES, alreadyVideoed, buildSpec, buildWordsPrompt, checkWords, dateLabel, isMp4, parseWords, pickVideoRow, pickVideoRows, publisherOf, videoLogId, videosToday, writeWords, type VideoRow } from './xvideo'
+import { VIDEO_HEADLINE_ASK, VIDEO_HEADLINE_MAX, VIDEO_STORY_TRIES, alreadyVideoed, buildSpec, buildWordsPrompt, checkWords, dateLabel, isMp4, parseWords, pickVideoRow, pickVideoRows, publisherOf, videoLogId, videosToday, voiceScript, writeWords, type VideoRow } from './xvideo'
 import type { ShareEntry } from './log'
 
 const NOW = new Date('2026-11-22T13:30:00Z')
@@ -91,4 +91,15 @@ test('the writer is asked for a headline with a margin under the hard limit', ()
   const { system } = buildWordsPrompt({ title: 't', excerpt: 'e', url: 'https://newsedition.in/article/s', tags: [], categorySlug: null, categoryName: null, imageUrl: null, content: '<p>x</p>' })
   assert.match(system, new RegExp(`20 to ${VIDEO_HEADLINE_ASK} characters`))
   assert.match(system, new RegExp(`over ${VIDEO_HEADLINE_MAX} is rejected`))
+})
+
+test('the narrator reads the headline and the three points, one sentence each, and stays short', () => {
+  const words = { headline: 'RBI keeps repo rate at 5.5%', points: ['The central bank held the rate on Friday.', 'Home loan EMIs stay the same!', 'Next review is in December'] }
+  const text = voiceScript(words)
+  assert.equal(text, 'RBI keeps repo rate at 5.5%. The central bank held the rate on Friday. Home loan EMIs stay the same. Next review is in December.')
+  // no doubled stops, no stray spaces, nothing that is not on the frames
+  assert.doesNotMatch(text, /[.!?]{2}|\s{2}/)
+  // at the longest allowed frame text it is still under the 1500 characters speak() accepts and about 20 s of speech
+  const longest = voiceScript({ headline: 'h'.repeat(56), points: ['p'.repeat(70), 'p'.repeat(70), 'p'.repeat(70)] })
+  assert.ok(longest.length < 1500)
 })

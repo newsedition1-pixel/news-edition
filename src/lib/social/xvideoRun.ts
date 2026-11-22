@@ -8,22 +8,23 @@ import { addEntry, scrub, type ShareEntry } from './log'
 import { loadArticle, loadShareLog } from './share'
 import { composeXPost } from './xcopy'
 import { X_VIDEO_DAILY_CAP } from './xplan'
-import { VIDEO_MAX_AGE_MS, alreadyVideoed, buildSpec, pickVideoRows, videoLogId, videosToday, writeWords, type VideoCandidate, type VideoRow } from './xvideo'
-import { askJson, writeXDraft } from './xwriter'
+import { VIDEO_MAX_AGE_MS, alreadyVideoed, buildSpec, pickVideoRows, videoLogId, videosToday, voiceScript, writeWords, type VideoCandidate, type VideoRow } from './xvideo'
+import { askJson, speak, writeXDraft } from './xwriter'
 
 type Gate = { skip: string } | null
 
-async function gate(now: Date, log: ShareEntry[]): Promise<Gate> {
+async function gate(now: Date, log: ShareEntry[], test = false): Promise<Gate> {
   if ((await getSocialMode()) === 'off') return { skip: 'social posting is off' }
   if (!loadChannelConfig(process.env).x) return { skip: 'X is not set up' }
-  if (videosToday(log, now) >= X_VIDEO_DAILY_CAP) return { skip: 'a video already went out today' }
+  // A test run (workflow started by hand with "test") only renders the video and posts nothing, so the daily limit does not apply.
+  if (!test && videosToday(log, now) >= X_VIDEO_DAILY_CAP) return { skip: 'a video already went out today' }
   return null
 }
 
 /** The story the next X video is about, with the words for its frames; or the reason there is none. */
-export async function videoCandidate(now = new Date()): Promise<{ skip: string } | { candidate: VideoCandidate }> {
+export async function videoCandidate(now = new Date(), opts: { test?: boolean } = {}): Promise<{ skip: string } | { candidate: VideoCandidate }> {
   const log = await loadShareLog()
-  const blocked = await gate(now, log)
+  const blocked = await gate(now, log, opts.test)
   if (blocked) return blocked
   const rows: VideoRow[] = await db
     .select({
@@ -48,7 +49,12 @@ export async function videoCandidate(now = new Date()): Promise<{ skip: string }
       failed = `the video text did not pass the checks: ${issues.join(' ')}`
       continue
     }
-    return { candidate: { id: pick.row.id, slug: pick.row.slug, title: pick.row.title, spec: buildSpec(pick.row, words, now), photoUrl: pick.photoUrl, photoCredit: pick.credit } }
+    // The narration: the words on the frames, read aloud. No voice (no key, a failed call) is not an error: the video then has music only.
+    const text = voiceScript(words)
+    const audio = await speak(text)
+    const voice = audio ? { mp3Base64: Buffer.from(audio).toString('base64'), text } : undefined
+    console.log(`X video voice: ${voice ? `${audio!.byteLength} bytes` : 'none (music only)'}`)
+    return { candidate: { id: pick.row.id, slug: pick.row.slug, title: pick.row.title, spec: buildSpec(pick.row, words, now), photoUrl: pick.photoUrl, photoCredit: pick.credit, ...(voice ? { voice } : {}) } }
   }
   return { skip: failed.slice(0, 400) }
 }

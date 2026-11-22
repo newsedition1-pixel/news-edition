@@ -161,8 +161,12 @@ def build(spec):
     pfs = 40 if has_photo else 48
     pstep = 50 if has_photo else 64
     pfnt = font(F_MD, pfs)
+    # With a voice the caller passes spec["timing"] (see run.py) so that each point appears as it is spoken.
+    timing = spec.get("timing") or {}
+    cue_points = timing.get("points") or []
     start = pstep_start
-    for pt in spec["points"][:3]:
+    point_times = []
+    for idx, pt in enumerate(spec["points"][:3]):
         pl = layer()
         pd = ImageDraw.Draw(pl)
         plines = wrap(probe, pt, pfnt, TEXT_W - 60)
@@ -174,7 +178,9 @@ def build(spec):
             pd.text((MARGIN + 46, yy), ln, font=pfnt, fill=WHITE)
             yy += pstep
         y = yy + (16 if has_photo else 34)
-        layers.append((pl, start))
+        at = float(cue_points[idx]) if idx < len(cue_points) else start
+        layers.append((pl, at))
+        point_times.append(at)
         start += 2.4
 
     limit = 1555 if has_photo else 1360
@@ -191,7 +197,7 @@ def build(spec):
     sy = 1572 if has_photo else 1395
     sd.rectangle([MARGIN, sy - 14, W - MARGIN, sy - 11], fill=GREY)
     sd.text((MARGIN, sy), src_text, font=src_font, fill=GREY)
-    layers.append((sl, 10.4))
+    layers.append((sl, float(timing.get("source", 10.4))))
 
     # CTA bar
     cl2 = layer()
@@ -203,9 +209,10 @@ def build(spec):
         cd2.rectangle([0, 1480, W, 1650], fill=RED)
         cd2.text((MARGIN, 1507), "Roz 60 second mein khabar", font=font(F_XB, 52), fill=WHITE)
         cd2.text((MARGIN, 1578), "Follow " + spec["handle"], font=font(F_SB, 42), fill=WHITE)
-    layers.append((cl2, 11.0))
+    cta_at = float(timing.get("cta", 11.0))
+    layers.append((cl2, cta_at))
 
-    reveal_times = [0.5] + [pstep_start + 2.4 * i for i in range(min(3, len(spec["points"])))] + [11.0]
+    reveal_times = [0.5] + point_times + [cta_at]
     return base, layers, photo_frames, photo_overlay, reveal_times
 
 
