@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { configuredChannels, loadChannelConfig, secretsOf, sendFacebook, sendInstagram, sendTelegram, sendWebhook, sendX, type ChannelConfig, type FetchFn } from './channels'
+import { FACEBOOK_TIMEOUT_MS, configuredChannels, loadChannelConfig, secretsOf, sendFacebook, sendInstagram, sendTelegram, sendWebhook, sendX, type ChannelConfig, type FetchFn } from './channels'
 import type { ComposedPost } from './compose'
 
 interface Call { url: string; method: string; headers: Record<string, string>; body: string }
@@ -97,6 +97,18 @@ test('Facebook posts the text with the link and the page token', async () => {
   assert.equal(form.get('message'), post.text)
   assert.equal(form.get('link'), post.link)
   assert.equal(form.get('access_token'), 'EAAB-secret')
+})
+
+test('Facebook is given more time than the other senders for its link preview, and still gets an abort signal', async () => {
+  assert.ok(FACEBOOK_TIMEOUT_MS >= 30_000 && FACEBOOK_TIMEOUT_MS <= 60_000)
+  let signal: AbortSignal | undefined
+  const f: FetchFn = async (_url, init) => {
+    signal = init?.signal ?? undefined
+    return new Response(JSON.stringify({ id: '111_222' }), { status: 200 })
+  }
+  const r = await sendFacebook(cfg, post, { fetch: f })
+  assert.equal(r.ok, true)
+  assert.ok(signal instanceof AbortSignal)
 })
 
 test('Facebook shows the platform error', async () => {
