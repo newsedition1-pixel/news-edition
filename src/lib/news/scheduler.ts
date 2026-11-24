@@ -1,7 +1,7 @@
 import 'server-only'
 import { db } from '@/lib/db'
 import { articles, categories, users } from '@/lib/db/schema'
-import { and, desc, eq, inArray, max } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, max } from 'drizzle-orm'
 import { discoverStories } from './feeds'
 import { dropCoveredStories } from './fresh'
 import { buildArticleFromStory, SkipStory, type StoryRef } from './pipeline'
@@ -12,6 +12,7 @@ import { getNewsAutoPublish, getNewsScheduleEnabled, getNewsWordLength, getSetti
 import { addFailed, hasFailed, parseFailed } from './failed'
 import { expireBreaking } from './placementDb'
 import type { Story } from './cluster'
+import { allowedSoFar, istDayStart, parseDailyCap } from './pace'
 
 /** Two runs closer together than this are treated as one (GitHub can fire a late run right behind the next). */
 const MIN_GAP_MS = 20 * 60 * 1000
@@ -123,6 +124,18 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
       .limit(1)
     if (recent && Date.now() - recent.createdAt.getTime() < MIN_GAP_MS) {
       return { ...out, message: 'An AI article was saved less than 20 minutes ago, so this run did nothing.' }
+    }
+
+    // Daily volume (owner decision 25 Nov 2026): about NEWS_DAILY_CAP (default 20) a day, spread evenly over the IST day.
+    const now = new Date()
+    const cap = parseDailyCap(process.env.NEWS_DAILY_CAP)
+    const allowed = allowedSoFar(now, cap)
+    const [{ n }] = await db
+      .select({ n: count() })
+      .from(articles)
+      .where(and(eq(articles.isAiGenerated, true), eq(articles.status, 'published'), gte(articles.publishedAt, istDayStart(now))))
+    if (n >= allowed) {
+      return { ...out, message: `Daily pace: ${n} AI articles published today, ${allowed} of ${cap} allowed by now, so this run did nothing.` }
     }
   }
 

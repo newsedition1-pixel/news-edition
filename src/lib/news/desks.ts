@@ -73,7 +73,7 @@ const RULES: Record<string, RegExp[]> = {
     /\b(sensex|nifty|stock|stocks|shares|share price|market|markets|rbi|reserve bank|gdp|inflation|rupee|economy|economic|earnings|profit|revenue|ipo|sebi|tax|gst|bank|banks|banking|loan|startup|startups|trade|tariff|tariffs|exports|imports|crude|oil prices|gold|silver|investors|investment|mutual fund|company|companies|merger|acquisition|fiscal|budget|insurance|brokerage|bond|bonds|auto sales)\b/i,
   ],
   world: [
-    /\b(u\.s\.|usa|united states|china|chinese|russia|russian|ukraine|gaza|israel|iran|iraq|syria|pakistan|bangladesh|sri lanka|nepal|afghanistan|taiwan|japan|south korea|north korea|europe|european|eu|nato|united nations|uk|britain|british|france|germany|canada|australia|trump|putin|xi jinping|zelensky|netanyahu|white house|kremlin|beijing|washington|london|brussels|middle east|africa|latin america|international|global)\b/i,
+    /\b(u\.s\.|usa|united states|china|chinese|russia|russian|ukraine|gaza|israel|iran|iraq|syria|pakistan|bangladesh|sri lanka|nepal|afghanistan|taiwan|japan|south korea|north korea|europe|european|eu|nato|united nations|uk|britain|british|france|germany|canada|australia|trump|putin|xi jinping|zelensky|netanyahu|white house|kremlin|beijing|washington|london|brussels|middle east|africa|latin america|international|global|vietnam|hanoi|indonesia|jakarta|malaysia|singapore|thailand|philippines|myanmar|cambodia|turkey|türkiye|turkiye|ankara|istanbul|antalya|egypt|saudi|saudi arabia|uae|dubai|abu dhabi|qatar|kuwait|oman|yemen|lebanon|jordan|brazil|mexico|argentina|chile|colombia|peru|venezuela|cuba|nigeria|kenya|ethiopia|sudan|south africa|italy|spain|portugal|poland|sweden|norway|denmark|finland|switzerland|netherlands|belgium|austria|greece|ireland|new zealand|tokyo|seoul|paris|berlin|rome|madrid|moscow|kyiv|kiev|tehran|islamabad|lahore|karachi|dhaka|kathmandu|colombo|kabul|cop\d+|g7|g20|brics|imf|world bank|nato|asean|michigan|california|texas|new york|florida|chicago|los angeles|toronto|sydney|melbourne)\b/i,
   ],
   politics: [
     /\b(bjp|congress|aap|tmc|shiv sena|ncp|rjd|jdu|sp|bsp|dmk|aiadmk|opposition|election|elections|poll|polls|campaign|lok sabha|rajya sabha|parliament|mp|mps|mla|mlas|minister|ministers|cabinet|prime minister|modi|rahul gandhi|kejriwal|amit shah|party|parties|coalition|manifesto|rally|vote|voters|voting|bypoll|seat sharing|speaker|resignation|ally|allies)\b/i,
@@ -113,6 +113,21 @@ export interface StoryText {
 
 const WORLD_ONLY_PUBLISHERS = new Set(['bbc', 'al-jazeera'])
 
+/**
+ * Words that tie a story to India. A story that names a foreign country or city and none of these is a world
+ * story, even when an Indian publisher carries it and it also says "accident", "court" or "minister" (24 Nov audit:
+ * a Vietnam blast, an Indonesia factory fire and COP31 landed in India, a Michigan lawsuit in Governance).
+ */
+const INDIA_RX = new RegExp(
+  [
+    String.raw`\b(india|indian|indians|new delhi|delhi|union government|isro|indian army|lok sabha|rajya sabha|bjp|congress|aap|modi|rahul gandhi|kejriwal|amit shah|rbi|sebi|rupee|rupees|crore|lakh)\b`,
+    RULES['haryana-news'][0].source,
+    RULES.state[0].source.replace('|district|collector|municipality', ''),
+  ].join('|'),
+  'i'
+)
+const DOMESTIC_DESKS = new Set(['india', 'governance', 'politics', 'state'])
+
 /** Every category with a keyword hit, best first (headline hits count double); ties go by `PRIORITY`. */
 export function categoryScores(story: StoryText): { slug: string; score: number }[] {
   const title = story.title ?? ''
@@ -145,6 +160,11 @@ export function classifyStory(story: StoryText): string {
   // A foreign-only story that merely mentions "market" or "minister" is still a world story, but a foreign
   // football or AI story is still a sports or technology story.
   if (foreignOnly && !FOREIGN_KEEPS_OWN_DESK.has(best)) return 'world'
+  if (DOMESTIC_DESKS.has(best)) {
+    const text = `${story.title ?? ''} ${story.summary ?? ''}`
+    const worldHit = RULES.world.some((rx) => rx.test(text))
+    if (worldHit && !INDIA_RX.test(text)) return 'world'
+  }
   return best
 }
 

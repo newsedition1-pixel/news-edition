@@ -91,8 +91,18 @@ async function notifyGoogleServiceAccount(url: string, type: NotifyType): Promis
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+/**
+ * Google's Indexing API is only meant for job-posting and livestream pages, and on this site it failed all day
+ * (daily quota of 200 exceeded, 403 "Failed to verify the URL ownership"; ~70 errors a day in the 24 Nov audit).
+ * Since 25 Nov 2026 it is off unless GOOGLE_INDEXING_API=on. Google finds articles through the sitemaps;
+ * IndexNow (Bing, Yandex, and Copilot through Bing) keeps running.
+ */
+export function googleIndexingEnabled(raw: string | undefined = process.env.GOOGLE_INDEXING_API): boolean {
+  return (raw ?? '').trim().toLowerCase() === 'on'
+}
+
 export function notifyIndexing(url: string, type: NotifyType = 'URL_UPDATED'): void {
-  const methods: Promise<void>[] = [notifyGoogleOAuth(url, type), notifyGoogleServiceAccount(url, type)]
+  const methods: Promise<void>[] = googleIndexingEnabled() ? [notifyGoogleOAuth(url, type), notifyGoogleServiceAccount(url, type)] : []
   // IndexNow only makes sense for new/updated URLs, not deletions
   if (type === 'URL_UPDATED') methods.push(notifyIndexNow(url))
 
