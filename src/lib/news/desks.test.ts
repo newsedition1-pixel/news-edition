@@ -127,3 +127,14 @@ test('alternativeCategories lists the other fitting categories, never the chosen
   assert.deepEqual(alternativeCategories(HARYANA_STORY, 1), ['state'])
   assert.deepEqual(alternativeCategories({ title: 'Quiet morning' }), [])
 })
+
+test('foreign stories carried by Indian publishers go to World, not India or Governance (24 Nov audit)', () => {
+  assert.equal(classifyStory({ title: 'Vietnam hot pot blast leaves six dead, dozens injured in Hanoi', publisherKeys: ['ndtv'] }), 'world')
+  assert.equal(classifyStory({ title: 'Indonesia factory fire kills 12 workers', summary: 'The accident happened near Jakarta.', publisherKeys: ['the-hindu'] }), 'world')
+  assert.equal(classifyStory({ title: 'COP31 talks collapse without deal on climate finance', publisherKeys: ['indian-express'] }), 'world')
+  assert.equal(classifyStory({ title: 'Michigan court allows pay lawsuit against state agency to proceed', publisherKeys: ['hindustan-times'] }), 'world')
+  // A foreign place plus an Indian link stays in its domestic desk.
+  assert.equal(classifyStory({ title: 'Delhi High Court stays ministry notification on Dubai flight fares', publisherKeys: ['the-hindu'] }), 'governance')
+  // Specific desks are unchanged.
+  assert.equal(classifyStory({ title: 'Nvidia opens new chip design centre in Taiwan' }), 'technology')
+})
