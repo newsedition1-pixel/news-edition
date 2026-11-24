@@ -28,6 +28,11 @@ test('sourceCitations: empty or link-less input gives an empty list; max is resp
   assert.equal(sourceCitations(sources, 2).length, 2)
 })
 
+test('sourceCitations: HTML entities in a link name become plain characters', () => {
+  const html = '<p><strong>Source:</strong> <a href="https://a.example/x">India &amp; Canada &#39;very close&#39; &quot;talks&quot; &#x2019;s</a></p>'
+  assert.equal(sourceCitations(html)[0].name, 'India & Canada \'very close\' "talks" \u2019s')
+})
+
 test('wordCountOf counts words and ignores tags', () => {
   assert.equal(wordCountOf('<p>One two</p><h2>three  four&nbsp;five</h2>'), 5)
   assert.equal(wordCountOf(''), 0)
