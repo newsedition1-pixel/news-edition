@@ -70,12 +70,75 @@ export function categoryTitle(name: string, page = 1): string {
 export function categoryDescription(name: string, description?: string | null): string {
   const d = clip(description, 155)
   if (d) return d
-  return `Latest ${name} news today: top stories, updates and analysis from NewsEdition.`
+  // "Haryana News" -> "Latest Haryana News today", not "Latest Haryana News news today".
+  const label = /\bnews$/i.test(name.trim()) ? name.trim() : `${name.trim()} news`
+  return `Latest ${label} today: top stories, updates and analysis from NewsEdition.`
 }
 
-/** Article <title>: ≤60 chars. Short titles take the " | NewsEdition" suffix from the layout template; long ones opt out of it so the total stays near 60. */
-export function articleTitleField(rawTitle: string): string | { absolute: string } {
-  const t = clip(rawTitle, 60)
+// A headline cannot end on one of these: a title cut after them reads as broken ("... dozens injured in").
+const DANGLING_END = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'nor', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'from', 'as',
+  'into', 'onto', 'over', 'after', 'before', 'amid', 'against', 'about', 'via', 'than', 'vs', 'during', 'between',
+  'among', 'despite', 'while', 'its', 'their', 'his', 'her', 'our', 'your', 'is', 'are', 'was', 'were', 'be', 'has',
+  'have', 'had', 'will', 'would', 'can', 'could', 'may', 'might',
+])
+
+function titleWords(s: string): string[] {
+  return s.toLowerCase().split(/\s+/).map((w) => w.replace(/^[^\p{L}\p{N}$₹]+|[^\p{L}\p{N}%]+$/gu, '')).filter(Boolean)
+}
+
+/**
+ * True when a stored SEO title looks cut mid-phrase: it ends with "…", on a word like "in" / "and" / "after",
+ * or (when it is near the 60-character cut) on a word the headline continues after ("... after historic" for
+ * "... after historic debut"). The news pipeline trims SEO titles to 60 characters at a word, which can leave these.
+ */
+export function seoTitleLooksCut(seoTitle: string, headline: string): boolean {
+  const s = seoTitle.replace(/\s+/g, ' ').trim()
+  if (!s) return false
+  if (/(…|\.\.\.)$/.test(s)) return true
+  if (/[.!?"'”’)]$/.test(s)) return false
+  const words = titleWords(s)
+  const last = words[words.length - 1]
+  if (!last) return false
+  if (DANGLING_END.has(last)) return true
+  if (s.length < 55) return false
+  const h = titleWords(headline)
+  if (h.length <= words.length) return false
+  const at = h.lastIndexOf(last)
+  return at >= 0 && at < h.length - 1
+}
+
+/** Drops trailing punctuation and dangling words ("... dozens injured in" -> "... dozens injured"). */
+function dropDanglingEnd(text: string): string {
+  let t = text.replace(/[\s,;:\-–—&|/]+$/, '')
+  for (let i = 0; i < 4; i++) {
+    const m = t.match(/^(.*\S)\s+(\S+)$/)
+    if (!m || !DANGLING_END.has(titleWords(m[2])[0] ?? '')) break
+    t = m[1].replace(/[\s,;:\-–—&|/]+$/, '')
+  }
+  return t
+}
+
+/**
+ * Text for an article's <title>, og:title and twitter:title. The SEO title is used unless it looks cut
+ * mid-phrase; then the full headline is used when it is at most `max` characters (Google shortens long titles
+ * itself with an ellipsis, which reads better than a title that ends on "in"), else the headline is shortened
+ * at a word with an ellipsis.
+ */
+export function articleTitleText(seoTitle: string | null | undefined, headline: string, max = 75): string {
+  const h = String(headline ?? '').replace(/\s+/g, ' ').trim()
+  const s = String(seoTitle ?? '').replace(/\s+/g, ' ').trim()
+  if (s && !seoTitleLooksCut(s, h)) return s
+  if (!h) return dropDanglingEnd(s.replace(/(…|\.\.\.)$/, ''))
+  if (h.length <= max) return h
+  const cut = h.slice(0, max - 1)
+  const at = cut.lastIndexOf(' ')
+  return `${dropDanglingEnd(at > max * 0.6 ? cut.slice(0, at) : cut)}…`
+}
+
+/** Article <title> field. Short titles take the " | NewsEdition" suffix from the layout template; longer ones opt out of it. */
+export function articleTitleField(text: string): string | { absolute: string } {
+  const t = clip(text, 75)
   return t.length <= 45 ? t : { absolute: t }
 }
 

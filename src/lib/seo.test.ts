@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { newsArticleJsonLd, organizationJsonLd, sourceCitations, wordCountOf } from './seo'
+import {
+  newsArticleJsonLd, organizationJsonLd, sourceCitations, wordCountOf,
+  articleTitleText, articleTitleField, seoTitleLooksCut, categoryDescription,
+} from './seo'
 
 const sources = `
 <h2>Further reading</h2><ul>
@@ -64,4 +67,57 @@ test('Organization JSON-LD: policies and contact point point at real pages', () 
   assert.equal(org.correctionsPolicy, 'https://newsedition.in/corrections')
   assert.equal(org.contactPoint.url, 'https://newsedition.in/contact')
   assert.equal(org.areaServed.name, 'India')
+})
+
+// Live cases of 24 Nov 2026: the pipeline trims SEO titles to 60 characters at a word, leaving titles that end mid-phrase.
+test('seoTitleLooksCut: dangling last word, ellipsis, or a word the headline continues after', () => {
+  assert.equal(seoTitleLooksCut('Vietnam hot pot blast leaves six dead, dozens injured in', 'Vietnam hot pot blast leaves six dead, dozens injured in Hanoi'), true)
+  assert.equal(seoTitleLooksCut('Vaibhav Sooryavanshi record: fastest List A century and', 'Vaibhav Sooryavanshi sets fastest List A century and double century'), true)
+  assert.equal(seoTitleLooksCut('Anthropic shares slip under $83 IPO price after historic', 'Anthropic shares slip under $83 IPO price just days after historic debut'), true)
+  assert.equal(seoTitleLooksCut('Mahindra to provide discounts for replacement of old…', 'Mahindra to provide discounts for replacement of old trucks, buses'), true)
+})
+
+test('seoTitleLooksCut: complete SEO titles are kept', () => {
+  assert.equal(seoTitleLooksCut('GSK launches Blenrep multiple myeloma therapy in India', 'GSK launches Blenrep, first BCMA-targeted therapy for relapsed multiple myeloma in India'), false)
+  assert.equal(seoTitleLooksCut('Haryana CM Saini calls for stronger local governance', 'Haryana CM Saini urges stronger local governance for better services'), false)
+  assert.equal(seoTitleLooksCut('Microsoft CEO on Human Control in AI Development', 'Microsoft CEO Highlights Importance of Human Oversight in Superintelligence'), false)
+  assert.equal(seoTitleLooksCut("China's consumer spending push stumbles; know why?", "China's consumer spending push stumbles; know why?"), false)
+  assert.equal(seoTitleLooksCut('', 'Anything'), false)
+})
+
+test('articleTitleText: a cut SEO title falls back to the full headline (up to 75 characters)', () => {
+  assert.equal(
+    articleTitleText('Vietnam hot pot blast leaves six dead, dozens injured in', 'Vietnam hot pot blast leaves six dead, dozens injured in Hanoi'),
+    'Vietnam hot pot blast leaves six dead, dozens injured in Hanoi',
+  )
+  assert.equal(
+    articleTitleText('Anthropic shares slip under $83 IPO price after historic', 'Anthropic shares slip under $83 IPO price just days after historic debut'),
+    'Anthropic shares slip under $83 IPO price just days after historic debut',
+  )
+  assert.equal(
+    articleTitleText('GSK launches Blenrep multiple myeloma therapy in India', 'GSK launches Blenrep, first BCMA-targeted therapy for relapsed multiple myeloma in India'),
+    'GSK launches Blenrep multiple myeloma therapy in India',
+  )
+  // No SEO title: the headline itself, whole when it fits.
+  assert.equal(articleTitleText(null, 'Mahindra to provide discounts for replacement of old trucks, buses'), 'Mahindra to provide discounts for replacement of old trucks, buses')
+})
+
+test('articleTitleText: a long headline is shortened at a word, never ending on "to" / "and", with an ellipsis', () => {
+  const h = 'Tata Steel to Sell Tubes Business and Tata Steel Colors to APL Apollo for ₹28,000 Crore in a big deal'
+  const t = articleTitleText('Tata Steel to Sell Tubes Business and Tata Steel Colors to', h)
+  assert.ok(t.length <= 75, t)
+  assert.ok(t.endsWith('…'), t)
+  assert.doesNotMatch(t, /\s(to|and|for|in|of)…$/i)
+  assert.ok(h.startsWith(t.slice(0, -1)), t)
+})
+
+test('articleTitleField: short titles keep the layout suffix, longer ones are absolute', () => {
+  assert.equal(articleTitleField('Short headline here'), 'Short headline here')
+  assert.deepEqual(articleTitleField('Vietnam hot pot blast leaves six dead, dozens injured in Hanoi'), { absolute: 'Vietnam hot pot blast leaves six dead, dozens injured in Hanoi' })
+})
+
+test('categoryDescription: no "News news" for a category whose name ends in News', () => {
+  assert.equal(categoryDescription('Haryana News'), 'Latest Haryana News today: top stories, updates and analysis from NewsEdition.')
+  assert.equal(categoryDescription('India'), 'Latest India news today: top stories, updates and analysis from NewsEdition.')
+  assert.equal(categoryDescription('India', 'Own text.'), 'Own text.')
 })
