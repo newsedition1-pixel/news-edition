@@ -17,7 +17,21 @@ test('owner decision: author per category', () => {
   assert.equal(deskForSlug('state')?.authorName, 'Sanjay Kumar')
   assert.equal(deskForSlug('governance')?.authorName, 'Sanjay Kumar')
   assert.equal(deskForSlug('entertainment')?.authorName, 'Rinki Gautam')
-  assert.equal(deskForSlug('sports'), null)
+  // 24 Nov 2026: the new Sports and Technology categories are published under Gaurav.
+  assert.equal(deskForSlug('sports')?.authorName, 'Gaurav')
+  assert.equal(deskForSlug('technology')?.authorName, 'Gaurav')
+  assert.equal(deskForSlug('lifestyle'), null)
+})
+
+test('Gaurav is the account named Gaurav, never Gaurav Kumar', () => {
+  const rows = [
+    { id: 'gaurav', name: 'GAURAV', role: 'owner', banned: false, createdAt: '2026-05-01' },
+    { id: 'gaurav-kumar', name: 'Gaurav Kumar', role: 'admin', banned: false, createdAt: '2026-04-01' },
+  ]
+  assert.equal(pickAuthorId(rows, 'Gaurav'), 'gaurav')
+  assert.equal(pickAuthorId(rows, 'Gaurav Kumar'), 'gaurav-kumar')
+  // With only "Gaurav Kumar" on the site there is no fallback to him: the two categories are skipped and the admin card says why.
+  assert.equal(pickAuthorId([rows[1]], 'Gaurav'), null)
 })
 
 test('author lookup ignores case, prefers owner, never uses banned accounts', () => {
@@ -52,11 +66,41 @@ test('stories are sorted into categories', () => {
   assert.equal(classifyStory({ title: 'Wall Street markets slide as investors fear tariffs', publisherKeys: ['bbc'] }), 'world')
 })
 
+test('sports and technology stories are sorted into their own categories', () => {
+  assert.equal(classifyStory({ title: 'India beat Australia in third T20I to level the series' }), 'sports')
+  assert.equal(classifyStory({ title: 'IPL auction: franchises spend big on uncapped players' }), 'sports')
+  assert.equal(classifyStory({ title: 'Verstappen wins the Las Vegas Grand Prix' }), 'sports')
+  assert.equal(classifyStory({ title: 'Gukesh and Sindarov begin the World Chess Championship' }), 'sports')
+  assert.equal(classifyStory({ title: 'Haryana wrestler wins gold at the Asian Games' }), 'sports')
+  assert.equal(classifyStory({ title: 'Google to invest $15 billion in an AI data centre in Visakhapatnam' }), 'technology')
+  assert.equal(classifyStory({ title: 'US imposes new licence rules on AI chip exports to China' }), 'technology')
+  assert.equal(classifyStory({ title: 'Apple shares fall after iPhone sales disappoint' }), 'technology')
+  // A story with a stronger hit elsewhere stays there.
+  assert.equal(classifyStory({ title: 'Cricketer joins BJP ahead of elections' }), 'politics')
+  assert.equal(classifyStory({ title: 'Sensex jumps 400 points as RBI holds rates' }), 'business')
+})
+
+test('"AI" followed by a number is an Air India flight code, not artificial intelligence', () => {
+  assert.equal(classifyStory({ title: 'Air India AI-171 crash: probe report submitted' }), 'india')
+  assert.equal(classifyStory({ title: 'Air India AI 171 inquiry hearing resumes' }), 'india')
+  assert.equal(classifyStory({ title: 'New AI tools help farmers predict the monsoon' }), 'technology')
+})
+
+test('BBC / Al Jazeera-only sports and technology stories keep their own desk; other foreign stories are still world', () => {
+  assert.equal(classifyStory({ title: 'Liverpool beat Manchester United in a Premier League thriller', publisherKeys: ['bbc'] }), 'sports')
+  assert.equal(classifyStory({ title: 'Nvidia unveils a new AI chip', publisherKeys: ['bbc', 'al-jazeera'] }), 'technology')
+  assert.equal(classifyStory({ title: 'Wall Street markets slide as investors fear tariffs', publisherKeys: ['bbc'] }), 'world')
+  // Once an Indian publisher also carries it, the plain keyword result applies.
+  assert.equal(classifyStory({ title: 'Liverpool beat Manchester United in a Premier League thriller', publisherKeys: ['bbc', 'the-hindu'] }), 'sports')
+})
+
 test('rotation: never-published first, then oldest, ties in fixed order', () => {
   const order = rotationOrder({ india: 300, business: null, world: 100, politics: 100, entertainment: null })
   assert.deepEqual(order, ['business', 'entertainment', 'world', 'politics', 'india'])
   assert.deepEqual(rotationOrder({ india: 5, world: 1 }), ['world', 'india'])
   assert.deepEqual(rotationOrder({}), [])
+  // A new category nothing was ever published in goes first.
+  assert.deepEqual(rotationOrder({ india: 300, sports: null, technology: null, world: 100 }), ['sports', 'technology', 'world', 'india'])
 })
 
 test('a category that was only tried goes behind the ones that were not', () => {
