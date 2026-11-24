@@ -22,10 +22,14 @@ export default function robots(): MetadataRoute.Robots {
         // NewsEdition gets cited and linked in ChatGPT, Claude and Perplexity answers.
         // GPTBot (OpenAI's crawler, also used for model training) is allowed on the
         // owner's decision of 20 Nov 2026; move it back to the blocked group below to undo.
+        // Gemini: AI Overviews and AI Mode read the page through Googlebot (allowed above);
+        // Google-Extended is the extra token for Gemini apps. It was already allowed through the
+        // catch-all group, it is listed here so the intent is visible (and tested, see robots.test.ts).
         userAgent: [
           'GPTBot', 'OAI-SearchBot', 'ChatGPT-User',
           'Claude-SearchBot', 'Claude-User',
           'PerplexityBot', 'Perplexity-User',
+          'Google-Extended',
         ],
         allow: '/',
         disallow: PRIVATE_PATHS,
