@@ -220,7 +220,7 @@ export default async function ArticlePage({ params }: Props) {
               <Link href={authorPath(article.author)} className={styles.author}>
                 <div className={styles.authorAvatar}>
                   {article.author.image ? (
-                    <Image src={article.author.image} alt={article.author.name} width={40} height={40} />
+                    <Image src={article.author.image} alt={cleanName(article.author.name)} width={40} height={40} />
                   ) : article.author.name.charAt(0)}
                 </div>
                 <div>

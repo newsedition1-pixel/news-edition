@@ -15,6 +15,15 @@ export const FEED_PATH = '/feed.xml'
 // Publisher logo (rendered by src/app/logo.png/route.tsx, 200x60 — within Google's 600x60 limit).
 export const LOGO = { url: `${siteUrl}/logo.png`, width: 200, height: 60 }
 
+// Sitewide share image (src/app/opengraph-image.tsx). A page that sets its own `openGraph` loses the inherited
+// one (category and author pages had no og:image), so such pages list this one explicitly.
+export const DEFAULT_OG_IMAGE = {
+  url: `${siteUrl}/opengraph-image`,
+  width: 1200,
+  height: 630,
+  alt: `${SITE_NAME} — Breaking News, Latest Updates`,
+}
+
 // Only profiles that exist. The About page marks LinkedIn as "coming soon", so no LinkedIn URL is listed.
 export const SAME_AS = [
   'https://newsedition.medium.com',
@@ -44,11 +53,20 @@ export function htmlToText(html: string | null | undefined): string {
     .trim()
 }
 
-/** "amit gautam" -> "Amit Gautam". Names that already contain capitals are left alone. */
+/**
+ * Display name of an author: "amit gautam" -> "Amit Gautam", "GAURAV" -> "Gaurav" (an all-capitals name reads as
+ * shouting in a byline). In an all-capitals name, words of up to 3 letters stay as they are ("MS", "PK" initials).
+ * Mixed-case names are left alone. The author URL slug is built from the raw name, so it does not change.
+ */
 export function cleanName(name: string | null | undefined): string {
   const n = String(name ?? '').trim()
-  if (!n || n !== n.toLowerCase()) return n
-  return n.replace(/\b\p{L}/gu, (c) => c.toUpperCase())
+  if (!n) return n
+  if (n === n.toLowerCase()) return n.replace(/\b\p{L}/gu, (c) => c.toUpperCase())
+  const letters = n.replace(/[^\p{L}]/gu, '')
+  if (letters.length >= 4 && n === n.toUpperCase()) {
+    return n.replace(/\p{L}+/gu, (w) => (w.length <= 3 ? w : w.charAt(0) + w.slice(1).toLowerCase()))
+  }
+  return n
 }
 
 /** Same URL shape as before: /author/{id}/{name-slug}. The slug comes from the raw name, because the page canonical-redirects on it. */

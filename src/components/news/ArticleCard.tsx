@@ -3,6 +3,7 @@ import Image from 'next/image'
 import styles from './ArticleCard.module.scss'
 import { formatRelativeTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { cleanName } from '@/lib/seo'
 import type { ArticleWithRelations } from '@/types'
 
 interface ArticleCardProps {
@@ -94,12 +95,12 @@ export function ArticleCard({ article, variant = 'default', priority = false }: 
               <div className={styles.author}>
                 <div className={styles.avatar}>
                   {author.image ? (
-                    <Image src={author.image} alt={author.name} width={24} height={24} />
+                    <Image src={author.image} alt={cleanName(author.name)} width={24} height={24} />
                   ) : (
                     author.name.charAt(0)
                   )}
                 </div>
-                <span>{author.name}</span>
+                <span>{cleanName(author.name)}</span>
               </div>
             )}
             {viewCount > 0 && (
