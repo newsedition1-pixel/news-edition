@@ -8,7 +8,8 @@ import { ArticleCard } from '@/components/news/ArticleCard'
 import styles from './page.module.scss'
 import type { ArticleWithRelations } from '@/types'
 import {
-  siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, categoryTitle, categoryDescription, breadcrumbJsonLd,
+  siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, DEFAULT_OG_IMAGE, pageAlternates, categoryTitle, categoryDescription,
+  breadcrumbJsonLd,
 } from '@/lib/seo'
 
 interface Props {
@@ -46,8 +47,15 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     title,
     description,
     alternates: pageAlternates(url),
-    openGraph: { type: 'website', url, siteName: SITE_NAME, locale: SITE_LOCALE, title: `${title} | ${SITE_NAME}`, description },
-    twitter: { card: 'summary_large_image', site: TWITTER_HANDLE, title: `${title} | ${SITE_NAME}`, description },
+    // Setting openGraph drops the inherited share image, so it is listed again.
+    openGraph: {
+      type: 'website', url, siteName: SITE_NAME, locale: SITE_LOCALE, title: `${title} | ${SITE_NAME}`, description,
+      images: [DEFAULT_OG_IMAGE],
+    },
+    twitter: {
+      card: 'summary_large_image', site: TWITTER_HANDLE, title: `${title} | ${SITE_NAME}`, description,
+      images: [DEFAULT_OG_IMAGE.url],
+    },
   }
 }
 

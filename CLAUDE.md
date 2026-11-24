@@ -307,6 +307,7 @@ All public pages emit JSON-LD:
 - **Author**: `Person` (with `sameAs` social links)
 
 Sitemap: `src/app/sitemap.ts` — auto-generates from DB.
+Share image: a page that sets its own `openGraph` loses the inherited `/opengraph-image`, so category and author pages list `DEFAULT_OG_IMAGE` (`src/lib/seo.ts`). Author names go through `cleanName()` everywhere they are shown (all-capitals "GAURAV" -> "Gaurav"; the URL slug is unchanged).
 Robots: `src/app/robots.ts`.
 
 ---

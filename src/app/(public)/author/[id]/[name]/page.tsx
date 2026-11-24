@@ -9,7 +9,9 @@ import { eq, and, desc } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { ArticleCard } from '@/components/news/ArticleCard'
 import { slugify } from '@/lib/utils'
-import { siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, clip, publisherJsonLd, authorRoleLabel } from '@/lib/seo'
+import {
+  siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, DEFAULT_OG_IMAGE, pageAlternates, cleanName, clip, publisherJsonLd, authorRoleLabel,
+} from '@/lib/seo'
 import styles from './page.module.scss'
 
 interface Props {
@@ -58,8 +60,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: `${name} – Articles & Profile`,
     description,
     alternates: pageAlternates(url),
-    openGraph: { type: 'profile', url, siteName: SITE_NAME, locale: SITE_LOCALE, title: `${name} | ${SITE_NAME}`, description },
-    twitter: { card: 'summary', site: TWITTER_HANDLE, title: `${name} | ${SITE_NAME}`, description },
+    // Setting openGraph drops the inherited share image, so it is listed again.
+    openGraph: {
+      type: 'profile', url, siteName: SITE_NAME, locale: SITE_LOCALE, title: `${name} | ${SITE_NAME}`, description,
+      images: [DEFAULT_OG_IMAGE],
+    },
+    twitter: { card: 'summary', site: TWITTER_HANDLE, title: `${name} | ${SITE_NAME}`, description, images: [DEFAULT_OG_IMAGE.url] },
   }
 }
 
