@@ -139,6 +139,23 @@ export function wordCountOf(html: string | null | undefined): number {
   return text ? text.split(' ').length : 0
 }
 
+function codePoint(n: number): string {
+  return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : ''
+}
+
+/** Turns HTML entities (&#39; &quot; &amp; ...) back into characters, for text that goes into JSON-LD. */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => codePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d: string) => codePoint(parseInt(d, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+}
+
 /**
  * The links an article cites: the "Further reading" list and the "Source:" line of its sources block
  * (the cover image credit is not a citation of a fact). Links to this site are left out. Used for the
@@ -166,7 +183,7 @@ export function sourceCitations(sourcesHtml: string | null | undefined, max = 8)
       if (u.hostname === host || u.hostname.endsWith(`.${host}`)) continue
       if (seen.has(u.href)) continue
       seen.add(u.href)
-      out.push({ url: u.href, name: clip(htmlToText(m[2]), 120) || u.hostname })
+      out.push({ url: u.href, name: clip(decodeEntities(htmlToText(m[2])), 120) || u.hostname })
       if (out.length >= max) return out
     }
   }
