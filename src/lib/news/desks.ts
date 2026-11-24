@@ -18,10 +18,14 @@ export const DESKS: Desk[] = [
   // "Haryana News" is the state-level section of the site, so it goes with State.
   { authorName: 'Sanjay Kumar', slugs: ['state', 'governance', 'haryana-news'] },
   { authorName: 'Rinki Gautam', slugs: ['entertainment'] },
+  // Owner decision (24 Nov 2026): the new Sports and Technology categories are published under Gaurav.
+  // The name must match the account exactly (after trimming and ignoring case): "GAURAV" is a different
+  // account from "Gaurav Kumar".
+  { authorName: 'Gaurav', slugs: ['sports', 'technology'] },
 ]
 
 /** Fixed order used to break ties when several categories are equally due. */
-export const SCHEDULE_SLUGS: string[] = ['india', 'business', 'world', 'politics', 'entertainment', 'governance', 'state', 'haryana-news']
+export const SCHEDULE_SLUGS: string[] = ['india', 'business', 'world', 'politics', 'entertainment', 'governance', 'state', 'haryana-news', 'sports', 'technology']
 
 export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').toLowerCase()
@@ -82,10 +86,24 @@ const RULES: Record<string, RegExp[]> = {
     /\b(state government|chief minister|punjab|uttar pradesh|bihar|maharashtra|gujarat|rajasthan|madhya pradesh|karnataka|kerala|tamil nadu|telangana|andhra pradesh|odisha|west bengal|assam|jharkhand|chhattisgarh|uttarakhand|himachal|goa|kashmir|jammu|manipur|meghalaya|tripura|mumbai|pune|lucknow|patna|jaipur|bhopal|bengaluru|bangalore|chennai|hyderabad|kolkata|ahmedabad|district|collector|municipality)\b/i,
   ],
   india: [/\b(india|indian|indians|new delhi|delhi|national|centre|union government|isro|army|indian army|railways|railway|monsoon|weather|flood|accident)\b/i],
+  // Sports and Technology (24 Nov 2026). Words that also mean something else in ordinary news are left out on
+  // purpose ("match", "goal", "final", "medal", "internet", "drone", "cyber", bare "technology"): a wrong hit files
+  // a story under Gaurav's desk, and the headline counts double.
+  sports: [
+    /\b(cricket|cricketer|cricketers|ipl|bcci|icc|t20|t20i|odi|odis|test match|test series|ranji|wicket|wickets|innings|batter|batters|batsman|bowler|bowlers|football|footballer|footballers|fifa|uefa|premier league|la liga|champions league|indian super league|tennis|wimbledon|grand slam|hockey|kabaddi|badminton|basketball|nba|nfl|baseball|rugby|olympic|olympics|olympian|olympians|paralympic|paralympics|commonwealth games|asian games|world cup|athlete|athletes|athletics|medallist|medalist|wrestler|wrestlers|wrestling|boxer|boxers|golf|chess|grandmaster|formula 1|formula one|f1|grand prix|motogp|marathon|tournament|tournaments|trophy|goalkeeper|striker|midfielder|semi-?finals?|quarter-?finals?|sports|sport|sportsperson)\b/i,
+  ],
+  technology: [
+    // "AI" followed by a number is an Air India flight code (AI-171), not artificial intelligence.
+    /\b(artificial intelligence|ai(?![-\s]?\d)|generative ai|machine learning|chatgpt|openai|anthropic|chatbot|chatbots|deepfake|deepfakes|software|hardware|app|apps|smartphone|smartphones|iphone|android|ios|samsung|google|microsoft|apple|nvidia|qualcomm|whatsapp|semiconductor|semiconductors|chip|chips|chipmaker|chipmakers|gpu|processor|laptop|laptops|gadget|gadgets|smartwatch|5g|6g|broadband|cybersecurity|cyberattack|cyberattacks|ransomware|malware|hacker|hackers|data breach|data centre|data centres|data center|data centers|cloud computing|quantum computing|quantum|robot|robots|robotics|big tech|tech giant|tech giants|tech company|tech companies|tech firm|tech firms|tech stocks|tech sector|tech industry)\b/i,
+  ],
 }
 
-/** Tie-break priority when two categories score the same: the more specific one wins. */
-const PRIORITY = ['haryana-news', 'entertainment', 'business', 'world', 'governance', 'politics', 'state', 'india']
+/**
+ * Tie-break priority when two categories score the same: the more specific one wins. Sports and Technology
+ * come right after Haryana News, so a story that fits one of them equally well as a general category
+ * ("India beat Australia in the third T20I", "US tightens AI chip exports to China") goes to them.
+ */
+const PRIORITY = ['haryana-news', 'sports', 'technology', 'entertainment', 'business', 'world', 'governance', 'politics', 'state', 'india']
 
 export interface StoryText {
   title: string
@@ -112,6 +130,9 @@ export function categoryScores(story: StoryText): { slug: string; score: number 
     .map(({ slug, score }) => ({ slug, score }))
 }
 
+/** Categories that keep their own desk even when only BBC / Al Jazeera carry the story. */
+const FOREIGN_KEEPS_OWN_DESK = new Set(['entertainment', 'sports', 'technology'])
+
 /**
  * Which category a story belongs to, by keywords in its headline (counted double) and summary.
  * Stories with no keyword hit go to India, except that BBC / Al Jazeera-only stories go to World.
@@ -121,8 +142,9 @@ export function classifyStory(story: StoryText): string {
   const keys = story.publisherKeys ?? []
   const foreignOnly = keys.length > 0 && keys.every((k) => WORLD_ONLY_PUBLISHERS.has(k))
   if (!best) return foreignOnly ? 'world' : 'india'
-  // A foreign-only story that merely mentions "market" or "minister" is still a world story.
-  if (foreignOnly && best !== 'entertainment') return 'world'
+  // A foreign-only story that merely mentions "market" or "minister" is still a world story, but a foreign
+  // football or AI story is still a sports or technology story.
+  if (foreignOnly && !FOREIGN_KEEPS_OWN_DESK.has(best)) return 'world'
   return best
 }
 
