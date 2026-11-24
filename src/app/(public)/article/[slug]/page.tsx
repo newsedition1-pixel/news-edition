@@ -12,7 +12,7 @@ import { formatDate } from '@/lib/utils'
 import { splitSources, unlinkPublisherLinks } from '@/lib/news/sourcesBlock'
 import {
   siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, authorPath, authorRoleLabel, clip,
-  articleTitleField, articleDescription, newsArticleJsonLd, breadcrumbJsonLd, wasUpdated,
+  articleTitleField, articleTitleText, articleDescription, newsArticleJsonLd, breadcrumbJsonLd, wasUpdated,
   wordCountOf, sourceCitations,
 } from '@/lib/seo'
 import styles from './page.module.scss'
@@ -54,7 +54,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!row) return { title: 'Article Not Found' }
 
   const url = `${siteUrl}/article/${slug}`
-  const headline = row.seoTitle || row.title
+  // SEO title, or the full headline when the stored SEO title was cut mid-phrase (see articleTitleText).
+  const headline = articleTitleText(row.seoTitle, row.title)
   const description = articleDescription({ seoDescription: row.seoDescription, excerpt: row.excerpt, content: row.content })
   const authorName = row.authorName ? cleanName(row.authorName) : null
 
