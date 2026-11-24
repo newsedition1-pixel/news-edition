@@ -108,7 +108,17 @@ export function organizationJsonLd() {
     founder: { '@type': 'Person', name: 'Amit Gautam' },
     sameAs: SAME_AS,
     publishingPrinciples: `${siteUrl}/editorial-policy`,
+    ethicsPolicy: `${siteUrl}/editorial-policy`,
     correctionsPolicy: `${siteUrl}/corrections`,
+    // Entity facts for AI answer engines and Google: who the publisher is, where it reports and how to reach it.
+    areaServed: { '@type': 'Country', name: 'India' },
+    contactPoint: {
+      '@type': 'ContactPoint',
+      contactType: 'editorial',
+      url: `${siteUrl}/contact`,
+      areaServed: 'IN',
+      availableLanguage: 'English',
+    },
   }
 }
 
@@ -123,6 +133,46 @@ export function publisherJsonLd() {
   }
 }
 
+/** Number of words in article HTML (tags removed). Used for the NewsArticle `wordCount`. */
+export function wordCountOf(html: string | null | undefined): number {
+  const text = htmlToText(html)
+  return text ? text.split(' ').length : 0
+}
+
+/**
+ * The links an article cites: the "Further reading" list and the "Source:" line of its sources block
+ * (the cover image credit is not a citation of a fact). Links to this site are left out. Used for the
+ * NewsArticle `citation`, so a machine reader sees what the story is based on.
+ */
+export function sourceCitations(sourcesHtml: string | null | undefined, max = 8): { url: string; name: string }[] {
+  const html = String(sourcesHtml ?? '')
+  const parts: string[] = []
+  const further = html.match(/<h2>\s*Further reading\s*<\/h2>\s*<ul>((?:(?!<\/ul>)[\s\S])*)<\/ul>/i)
+  if (further) parts.push(further[1])
+  const source = html.match(/<p>\s*<strong>\s*Source:\s*<\/strong>((?:(?!<\/p>)[\s\S])*)<\/p>/i)
+  if (source) parts.push(source[1])
+
+  const host = new URL(siteUrl).hostname
+  const seen = new Set<string>()
+  const out: { url: string; name: string }[] = []
+  for (const part of parts) {
+    for (const m of part.matchAll(/<a\s[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+      let u: URL
+      try {
+        u = new URL(m[1].replace(/&amp;/g, '&'))
+      } catch {
+        continue
+      }
+      if (u.hostname === host || u.hostname.endsWith(`.${host}`)) continue
+      if (seen.has(u.href)) continue
+      seen.add(u.href)
+      out.push({ url: u.href, name: clip(htmlToText(m[2]), 120) || u.hostname })
+      if (out.length >= max) return out
+    }
+  }
+  return out
+}
+
 export interface ArticleLdInput {
   slug: string
   title: string
@@ -134,6 +184,8 @@ export interface ArticleLdInput {
   tags?: string[] | null
   category?: { name: string } | null
   author?: { id: string; name: string } | null
+  wordCount?: number
+  citations?: { url: string; name: string }[]
 }
 
 export function newsArticleJsonLd(a: ArticleLdInput) {
@@ -154,13 +206,23 @@ export function newsArticleJsonLd(a: ArticleLdInput) {
     inLanguage: SITE_LANGUAGE,
     isAccessibleForFree: true,
     author: a.author
-      ? [{ '@type': 'Person', name: cleanName(a.author.name), url: `${siteUrl}${authorPath(a.author)}` }]
+      ? [{
+          '@type': 'Person',
+          // Same @id as the Person on the author page, so the article and the author are one entity.
+          '@id': `${siteUrl}${authorPath(a.author)}#person`,
+          name: cleanName(a.author.name),
+          url: `${siteUrl}${authorPath(a.author)}`,
+        }]
       : [{ '@type': 'Organization', name: SITE_NAME, url: siteUrl }],
     publisher: publisherJsonLd(),
     mainEntityOfPage: { '@type': 'WebPage', '@id': url },
     url,
     keywords: a.tags?.join(', '),
     articleSection: a.category?.name,
+    ...(a.wordCount ? { wordCount: a.wordCount } : {}),
+    ...(a.citations?.length
+      ? { citation: a.citations.map((c) => ({ '@type': 'CreativeWork', name: c.name, url: c.url })) }
+      : {}),
   }
 }
 

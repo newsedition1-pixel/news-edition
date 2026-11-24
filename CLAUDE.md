@@ -260,7 +260,8 @@ Variables (`_variables.scss`) and mixins (`_mixins.scss`) are injected via `sass
 All SEO identity and JSON-LD live in `src/lib/seo.ts` (site URL, X handle, logo, `cleanName()`, title/description rules, `newsArticleJsonLd()`, `breadcrumbJsonLd()`, `organizationJsonLd()`). Use them instead of hand-writing metadata or JSON-LD in a page.
 - A page that sets `alternates` replaces the layout's, so always build it with `pageAlternates(canonicalUrl)` (keeps the RSS `<link rel="alternate">`).
 - A page that sets `openGraph` replaces the layout's entirely, so repeat `siteName` and `locale`.
-- RSS feed: `/feed.xml` (`src/app/feed.xml/route.ts`). AI-bot crawl policy: `src/app/robots.ts`. LLM summary file: `public/llms.txt`.
+- RSS feed: `/feed.xml` (`src/app/feed.xml/route.ts`). AI-bot crawl policy: `src/app/robots.ts`. LLM summary file: `/llms.txt` (`src/app/llms.txt/route.ts`, text built from the database by `src/lib/llms.ts`: active categories + the 30 newest stories, revalidated every 15 min; the old static `public/llms.txt` is gone).
+- **AI search (ChatGPT, Gemini, Claude, Perplexity)**, owner decision 24 Nov 2026: `robots.ts` allows the answer/search bots (OAI-SearchBot, ChatGPT-User, GPTBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Google-Extended, plus Googlebot and Bingbot) and `robots.test.ts` fails if one of them is ever blocked. `NewsArticle` JSON-LD carries `wordCount`, `citation` (the "Further reading" and "Source:" links, not the cover credit) and an author `@id` equal to the Person on the author page; the publisher has `ethicsPolicy`, `contactPoint`, `areaServed`. Crawler access is not what limits AI citations (authority and original reporting are); measure with GA4 referrals from chatgpt.com, perplexity.ai, gemini.google.com, claude.ai, copilot.microsoft.com.
 
 ### Image Upload Flow
 1. Client POSTs file to `/api/upload`

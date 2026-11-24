@@ -13,6 +13,7 @@ import { splitSources, unlinkPublisherLinks } from '@/lib/news/sourcesBlock'
 import {
   siteUrl, SITE_NAME, SITE_LOCALE, TWITTER_HANDLE, pageAlternates, cleanName, authorPath, authorRoleLabel, clip,
   articleTitleField, articleDescription, newsArticleJsonLd, breadcrumbJsonLd, wasUpdated,
+  wordCountOf, sourceCitations,
 } from '@/lib/seo'
 import styles from './page.module.scss'
 import type { ArticleWithRelations } from '@/types'
@@ -142,6 +143,11 @@ export default async function ArticlePage({ params }: Props) {
   const articleUrl = `${siteUrl}/article/${slug}`
   const showUpdated = wasUpdated(article.publishedAt, article.updatedAt)
 
+  // Sources and image credit are shown small, at the very bottom of the page. Older AI articles also link
+  // publisher names inside the text; those links are dropped here (the same links are in the sources block).
+  const { body: splitBody, sources: sourcesHtml } = splitSources(article.content)
+  const contentHtml = row.isAiGenerated ? unlinkPublisherLinks(splitBody) : splitBody
+
   const jsonLd = newsArticleJsonLd({
     slug,
     title: article.title,
@@ -153,13 +159,11 @@ export default async function ArticlePage({ params }: Props) {
     tags: article.tags,
     category: article.category,
     author: article.author,
+    wordCount: wordCountOf(splitBody),
+    citations: sourceCitations(sourcesHtml),
   })
 
   const faqs = article.faqs ?? []
-  // Sources and image credit are shown small, at the very bottom of the page. Older AI articles also link
-  // publisher names inside the text; those links are dropped here (the same links are in the sources block).
-  const { body: splitBody, sources: sourcesHtml } = splitSources(article.content)
-  const contentHtml = row.isAiGenerated ? unlinkPublisherLinks(splitBody) : splitBody
   const faqLd = faqs.length > 0 ? {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
