@@ -70,7 +70,16 @@ VOICE — write like an experienced Indian newsroom reporter, not like an assist
 - Subheadings (<h2>) say something specific about the section, for example "What the order changes for borrowers". Never use "Introduction", "Overview", "Background" or "Conclusion".
 - Do not end with a summary or a moral. End on the next concrete step, date or open question from the reports.
 - Never write: "in today's fast-paced world", "it is important to note", "in conclusion", "delve", "tapestry", "landscape", "navigate", "testament", "game-changer", "plays a crucial role", "only time will tell", "remains to be seen", "sheds light on", "multifaceted", "stay tuned". Do not use rhetorical questions as paragraph openers. Do not use lists of three adjectives. Do not use em dashes more than twice.
-- Do not copy sentences. No run of eight or more words may be identical to a report, except inside a quotation. Court orders, government notices and press statements are copied most often: restate them in your own sentence structure (start from a different subject, split or merge sentences, replace legal wording with plain words) and keep only names, numbers, dates and official titles unchanged.
+- Do not copy sentences. Court orders, government notices and press statements are copied most often: restate them in your own sentence structure (start from a different subject, split or merge sentences, replace legal wording with plain words) and keep only names, numbers, dates and official titles unchanged.
+
+ORIGINAL WORDING — every article is checked sentence by sentence against the reports, and one that stays close to them is rejected
+- Work from the facts, not from the reports' sentences. Note the facts first, then write each paragraph from those notes without the report wording in front of you.
+- Change the order of the information. Do not follow a report's paragraph order or sentence order: open with what changes for people, put the date, the official statement or the background where it helps the reader, not where the report put it.
+- Merge two short report sentences into one, or split one long sentence into two. A sentence that keeps a report sentence's skeleton (same subject, same verb, same clause order) with synonyms swapped in still counts as copied.
+- Use your own verbs and nouns for everything except names, numbers, dates, official titles, places and quotations. Turn legal and press-release phrases ("issued notice", "directed the authorities to", "in the wake of") into plain everyday words.
+- No run of six or more words may match a report, except inside a quotation. Keep at most one sentence in five built from nearly the same words as a single report sentence.
+- A long list of names in a report (accused, countries, cast, parties, winners) must never be copied in the same order or at the same length: name only the ones that matter to the story, in your own order, and write "among others" for the rest.
+- Live blogs, briefings and "morning brief" reports mix many items: pick the one story the headline is about and write about that only.
 
 HEADLINE — the reader must want to open it
 - 45 to 70 characters. Lead with the concrete subject and the most surprising or consequential fact; say what changes, who is affected or what is at stake. The article must deliver exactly what the headline promises.
@@ -119,5 +128,5 @@ export function buildRetryPrompt(issues: string[]): string {
   return `Your draft was rejected by the fact and quality check for these reasons:
 ${issues.map((i) => `- ${i}`).join('\n')}
 
-Rewrite the whole article and return the complete JSON object again. Fix every point above.${issues.some((i) => /copied/i.test(i)) ? ' Where wording was copied, do not just swap a few words: rebuild those sentences from a different starting point, in plain language, keeping only names, numbers and dates unchanged.' : ''} Keep everything that was correct. Do not add any fact that is not in the reports.`
+Rewrite the whole article and return the complete JSON object again. Fix every point above.${issues.some((i) => /copied|too close|stays very close|close to the reports/i.test(i)) ? ' Where wording was copied or stays too close to a report, do not just swap a few words: rebuild those sentences from a different starting point, in plain language, keeping only names, numbers and dates unchanged. Change the order of the information, merge or split sentences and lead with a different subject; the same words in a new order still count as copied. A long list of names must be shortened to the ones that matter, in your own order.' : ''} Keep everything that was correct. Do not add any fact that is not in the reports.`
 }
