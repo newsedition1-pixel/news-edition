@@ -565,12 +565,30 @@ export function betterAudit(a: AuditResult, b: AuditResult): AuditResult {
 // ---------------------------------------------------------------------------------------------
 // Mode and SEO choice
 
-/** `enforce`: a failed audit retries once and then holds the article as a draft. `log`: audit and record, never block. `off`: no audit. */
+/** `enforce`: a failed audit retries once and then holds the article as a draft (see `auditHoldReason` for which verdicts hold). `log`: audit and record, never block. `off`: no audit. */
 export type AuditMode = 'enforce' | 'log' | 'off'
 
 export function parseAuditMode(value: string | undefined | null): AuditMode {
   const v = (value ?? '').trim().toLowerCase()
   return v === 'log' || v === 'off' ? v : 'enforce'
+}
+
+/**
+ * Why an audited draft goes to the drafts folder instead of being published (null = it goes live).
+ *
+ * Owner decision 26 Nov 2026: only a HOLD stops an article. On 26 Nov strict enforcement (every IMPROVE
+ * held) kept 13 of 15 scheduled runs from publishing, almost all because "several passages stay close to
+ * the reports' wording" (Medium copying risk); an IMPROVE has already been rewritten once with the audit's
+ * fixes by the time this is asked, so the better draft is published. Two IMPROVE cases still hold, because
+ * they are about whether the facts are right and not about style: a claim the reports do not contain, and
+ * an overall score under `OVERALL_IMPROVE_BELOW`.
+ */
+export function auditHoldReason(audit: AuditResult | null, mode: AuditMode): string | null {
+  if (!audit || mode !== 'enforce' || audit.decision === 'PUBLISH') return null
+  const factDoubt = audit.facts.unsupported.length > 0
+  const tooLow = audit.score < OVERALL_IMPROVE_BELOW
+  if (audit.decision === 'IMPROVE' && !factDoubt && !tooLow) return null
+  return `pre-publication audit ${audit.decision} (${audit.score}/100): ${audit.reasons.slice(0, 2).join(' ')}`
 }
 
 export function seoFieldsOk(seoTitle: string, seoDescription: string, keyword: string): boolean {

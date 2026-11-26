@@ -65,3 +65,20 @@ test('system prompt asks for real-reader FAQs and against repetition and stock c
   assert.match(p, /Say each fact once/)
   assert.match(p, /"Moreover", "Furthermore"/)
 })
+
+test('system prompt has the original-wording rules: new order, merged or split sentences, no run of six words, shortened name lists', () => {
+  const p = buildSystemPrompt(800, 6, 600)
+  assert.match(p, /ORIGINAL WORDING/)
+  assert.match(p, /Change the order of the information/)
+  assert.match(p, /run of six or more words/)
+  assert.match(p, /long list of names/)
+  assert.doesNotMatch(p, /eight or more words/)
+})
+
+test('retry prompt adds the rebuild advice for audit "too close" issues too, not only for copied wording', () => {
+  const close = buildRetryPrompt(['Too close to the reports’ wording: "the committee voted to hold rates"; "retail inflation stood at". Rebuild these sentences from a different starting point.'])
+  assert.match(close, /rebuild those sentences/)
+  assert.match(close, /Change the order of the information/)
+  assert.match(close, /list of names must be shortened/)
+  assert.doesNotMatch(buildRetryPrompt(['bad figure']), /Change the order of the information/)
+})

@@ -8,7 +8,7 @@ import { runLlmAudit } from '@/lib/ai/audit'
 import { sanitizeFaqs } from '@/lib/utils'
 import { fetchTrustedArticle, type TrustedArticle } from './feeds'
 import { assessArticle, htmlToText, sanitizeArticleHtml, type QualityReport } from './quality'
-import { auditArticle, betterAudit, chooseSeo, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, type AuditMode, type AuditResult, type AuditSummary, type LlmFindings } from './audit'
+import { auditArticle, auditHoldReason, betterAudit, chooseSeo, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, type AuditMode, type AuditResult, type AuditSummary, type LlmFindings } from './audit'
 import { assembleArticleHtml, primaryDocumentLinks, type ExternalSource } from './links'
 import { buildImageCredit, buildPublisherImageCredit, imageKey, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, safeCoverPrompt, searchCommonsImage } from './images'
 import { checkImageForBrandLogo } from '@/lib/ai/logoCheck'
@@ -407,8 +407,10 @@ export async function buildArticleFromStory(story: StoryRef, opts: PipelineOptio
   if (!cover) holdReason = `no cover image could be saved (${coverNotes.join('; ').slice(0, 300)})`
   else if (report.ungroundedNames.length >= 3) holdReason = `names that are not in the source reports (${report.ungroundedNames.slice(0, 4).join(', ')})`
   // The audit verdict on the text decides; the cover and links only change the SEO and Discover parts of the score.
-  else if (draftAudit && mode === 'enforce' && draftAudit.decision !== 'PUBLISH') {
-    holdReason = `pre-publication audit ${draftAudit.decision} (${draftAudit.score}/100): ${draftAudit.reasons.slice(0, 2).join(' ')}`
+  // Only a HOLD (or an IMPROVE that doubts a fact or scores under 65) stops the article; see `auditHoldReason`.
+  else {
+    const auditHold = auditHoldReason(draftAudit, mode)
+    if (auditHold) holdReason = auditHold
   }
 
   const primary: ExternalSource = { name: reports[0].publisher.name, url: reports[0].finalUrl, title: story.sources.find((s) => s.url === reports[0].finalUrl)?.title }

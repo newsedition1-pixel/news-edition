@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { auditArticle, betterAudit, chooseSeo, closeParaphrases, OVERALL_IMPROVE_BELOW, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, WEIGHTS, type AuditInput, type LlmFindings } from './audit'
+import { auditArticle, auditHoldReason, betterAudit, chooseSeo, closeParaphrases, OVERALL_IMPROVE_BELOW, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, WEIGHTS, type AuditInput, type LlmFindings } from './audit'
 import { assessArticle } from './quality'
 
 const SOURCE = `The Reserve Bank of India kept the repo rate unchanged at 6.5 per cent on Friday, Governor Sanjay Malhotra said after the three day meeting of the monetary policy committee in Mumbai. Retail inflation stood at 4.2 per cent in October, up from 3.7 per cent a month earlier, according to government data. "We will remain watchful on food prices," Malhotra told reporters. The committee voted 5 to 1 to hold rates. Economists at several banks expect no cut before February. Home loan borrowers will see no change in their monthly instalments for now, and the central bank also left the cash reserve ratio at 4 per cent. The bank projected growth of 6.8 per cent for the year.`
@@ -216,4 +216,39 @@ test('betterAudit prefers the lower-risk decision, then the higher score; summar
   const s = summarizeAudit(held)
   assert.equal(s.decision, 'HOLD')
   assert.ok(s.reasons.length <= 4)
+})
+
+test('auditHoldReason: in enforce mode only a HOLD, a doubted fact or a score under 65 keeps an article as a draft', () => {
+  const clean = auditArticle(input())
+  assert.equal(auditHoldReason(clean, 'enforce'), null)
+
+  // IMPROVE because several passages stay close to the reports' wording (the 26 Nov 2026 case): it is published.
+  const lead = [
+    'In October, retail inflation stood at 4.2 per cent, up from 3.7 per cent a month earlier, according to government data.',
+    'On Friday the repo rate was kept unchanged by the Reserve Bank of India at 6.5 per cent, said Governor Sanjay Malhotra after the monetary policy committee meeting in Mumbai lasting three days.',
+    'Also the central bank left the cash reserve ratio at 4 per cent, and home loan borrowers will see no change in monthly instalments for now.',
+  ].join(' ')
+  const close = auditArticle(input({ contentHtml: html({ lead }) }))
+  assert.equal(close.plagiarism.level, 'Medium')
+  assert.equal(close.decision, 'IMPROVE')
+  assert.ok(close.reasons.some((r) => /stay close to the reports/.test(r)))
+  assert.equal(auditHoldReason(close, 'enforce'), null)
+
+  // HOLD still holds, with the same wording the admin screen has always shown.
+  const held = auditArticle(input({ llm: { ...noFindings, claims: [{ claim: 'x', snippet: 'kept its repo rate at 6.5 per cent', status: 'contradicted', evidence: 'Retail inflation stood at 4.2 per cent in October' }] } }))
+  assert.match(auditHoldReason(held, 'enforce') ?? '', /^pre-publication audit HOLD \(\d+\/100\): The reports contradict/)
+
+  // An IMPROVE that is about a fact (one claim the reports do not contain) still holds.
+  const doubt = auditArticle(input({ llm: { ...noFindings, claims: [{ claim: 'a', snippet: 'leaving home loan instalments unchanged', status: 'unsupported' }] } }))
+  assert.equal(doubt.decision, 'IMPROVE')
+  assert.match(auditHoldReason(doubt, 'enforce') ?? '', /^pre-publication audit IMPROVE .*One claim could not be matched/)
+
+  // So does an IMPROVE with a very low overall score.
+  assert.match(auditHoldReason({ ...close, score: OVERALL_IMPROVE_BELOW - 1 }, 'enforce') ?? '', /^pre-publication audit IMPROVE/)
+  assert.equal(auditHoldReason({ ...close, score: OVERALL_IMPROVE_BELOW }, 'enforce'), null)
+
+  // log and off never hold; no audit never holds.
+  assert.equal(auditHoldReason(held, 'log'), null)
+  assert.equal(auditHoldReason(held, 'off'), null)
+  assert.equal(auditHoldReason(null, 'enforce'), null)
 })
