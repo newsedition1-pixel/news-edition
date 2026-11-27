@@ -177,6 +177,21 @@ export function safeCoverPrompt(categorySlug: string | null | undefined): string
   return `A calm, realistic editorial illustration for a ${topic} news story: an abstract symbolic scene with no people, no faces, no text, no logos, no flags and nothing violent.`
 }
 
+/** The line stored with an AI illustration. It must stay: the picture must never pass as a photograph, and `hasAiCover()` reads it. */
+export const AI_COVER_LABEL = '<p><em>Cover image: AI-generated illustration, not a photograph of the event.</em></p>'
+
+/**
+ * The credit or label line stored at the end of an article for its cover.
+ * Owner decision 28 Nov 2026 ("image credit ka bhi hata do"): a Wikimedia or publisher photo gets no credit
+ * line any more. An AI illustration keeps its label (not a credit: it says the picture is not a photograph).
+ * Trade-off: a Wikimedia licence (CC BY and similar) asks for attribution, and a publisher's photo is used
+ * without its "courtesy" line, so a rights holder can still object; `buildImageCredit` and
+ * `buildPublisherImageCredit` below are kept, unused, to put the line back.
+ */
+export function coverNoteHtml(kind: 'commons' | 'publisher' | 'generated'): string {
+  return kind === 'generated' ? AI_COVER_LABEL : ''
+}
+
 export function buildImageCredit(img: CommonsImage): string {
   const licence = img.licenseUrl
     ? `<a href="${escapeHtml(img.licenseUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(img.license)}</a>`

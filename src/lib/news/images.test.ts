@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildImageCredit, classifyLicense, imageKey, isPublicHttpsUrl, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, parseCommonsPages, relevantImages, safeCoverPrompt } from './images'
+import { buildImageCredit, classifyLicense, coverNoteHtml, imageKey, isPublicHttpsUrl, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, parseCommonsPages, relevantImages, safeCoverPrompt } from './images'
 
 const meta = (license: string, artist = 'Jane <a href="x">Doe</a>', description = 'Narendra Modi addressing a rally in Hisar') => ({
   LicenseShortName: { value: license },
@@ -112,4 +112,12 @@ test('only https URLs on a public host may be downloaded by the server', () => {
   assert.equal(isPublicHttpsUrl('https://printer.local/a.jpg'), false)
   assert.equal(isPublicHttpsUrl('not a url'), false)
   assert.equal(isPublicHttpsUrl(null), false)
+})
+
+test('photo covers get no credit line (28 Nov 2026), the AI illustration keeps its label', () => {
+  assert.equal(coverNoteHtml('commons'), '')
+  assert.equal(coverNoteHtml('publisher'), '')
+  const label = coverNoteHtml('generated')
+  assert.match(label, /AI-generated illustration, not a photograph/)
+  assert.match(label, /^<p><em>Cover image:/)
 })

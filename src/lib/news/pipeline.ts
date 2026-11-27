@@ -10,7 +10,7 @@ import { fetchTrustedArticle, type TrustedArticle } from './feeds'
 import { assessArticle, htmlToText, sanitizeArticleHtml, type QualityReport } from './quality'
 import { auditArticle, auditHoldReason, betterAudit, chooseSeo, parseAuditMode, retryIssues, summarizeAudit, verifyFindings, type AuditMode, type AuditResult, type AuditSummary, type LlmFindings } from './audit'
 import { assembleArticleHtml, primaryDocumentLinks, type ExternalSource } from './links'
-import { buildImageCredit, buildPublisherImageCredit, imageKey, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, safeCoverPrompt, searchCommonsImage } from './images'
+import { coverNoteHtml, imageKey, isSiteDefaultImage, looksLikeLogoShape, looksLikePlaceholderImage, safeCoverPrompt, searchCommonsImage } from './images'
 import { checkImageForBrandLogo } from '@/lib/ai/logoCheck'
 import { logoCheckEnabled } from '@/lib/ai/logoPrompt'
 import { publisherSiteImage } from './siteImage'
@@ -285,7 +285,7 @@ async function pickCover(
     }
     try {
       const stored = await storeImage(img.url, uploadedBy)
-      return { ...stored, alt: img.title.slice(0, 190), creditHtml: buildImageCredit(img), kind: 'commons' }
+      return { ...stored, alt: img.title.slice(0, 190), creditHtml: coverNoteHtml('commons'), kind: 'commons' }
     } catch (e) {
       notes.push(`Wikimedia: ${reasonOf(e)}`)
       return null
@@ -341,7 +341,7 @@ async function pickCover(
         }
         try {
           const stored = await storeImage(url, uploadedBy)
-          return { ...stored, alt: article.imageAlt, creditHtml: buildPublisherImageCredit(who, r.finalUrl), kind: 'publisher' }
+          return { ...stored, alt: article.imageAlt, creditHtml: coverNoteHtml('publisher'), kind: 'publisher' }
         } catch (e) {
           notes.push(`${who}: ${reasonOf(e)}`)
         }
@@ -364,7 +364,7 @@ async function pickCover(
       return {
         ...stored,
         alt: article.imageAlt,
-        creditHtml: '<p><em>Cover image: AI-generated illustration, not a photograph of the event.</em></p>',
+        creditHtml: coverNoteHtml('generated'),
         kind: 'generated',
       }
     } catch (e) {

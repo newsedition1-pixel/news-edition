@@ -373,10 +373,10 @@ function assessEeat(input: AuditInput, articleText: string, quotes: number): { s
   const checks: Check[] = [
     // 'Two or more trusted publishers are named' and 'Sources are listed at the end with links' were removed on
     // 28 Nov 2026 (owner decision: the article never names its news sources); the score is out of the checks left.
+    // 'The cover image is credited or labelled' went the same day (owner decision: no image credit on photos).
     { id: 'attribution', label: 'Key facts are attributed (said, according to, reported)', pass: attributions >= 3, weight: 15, applicable: true },
     { id: 'statement', label: 'Includes an official statement or a direct quotation', pass: official, weight: 15, applicable: true },
     { id: 'documents', label: 'Links to an official document or primary source', pass: (input.links?.documents ?? 0) >= 1, weight: 15, applicable: !!input.links },
-    { id: 'credit', label: 'The cover image is credited or labelled', pass: input.cover?.kind !== 'none', weight: 5, applicable: !!input.cover },
     { id: 'author', label: 'The author has a public profile with a bio', pass: !!input.author?.hasBio, weight: 10, applicable: !!input.author },
   ]
   return { score: scoreChecks(checks), issues: checks.filter((c) => c.applicable && !c.pass).map((c) => c.label) }

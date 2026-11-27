@@ -146,10 +146,11 @@ export interface Assembled {
 
 /**
  * Final article HTML: body with inline internal links, then related reading, then one sources
- * block at the very end: official documents ("Further reading") and the image credit.
+ * block at the very end: official documents ("Further reading") and the cover note (only the AI-illustration label).
  * Owner decision 28 Nov 2026: the article never names its news sources, so there is no "Source:"
- * line and no link to another publisher (`primary` and `others` are accepted but not shown). The
- * image credit stays: a photo licence (Wikimedia, a publisher's own picture) requires it.
+ * line and no link to another publisher (`primary` and `others` are accepted but not shown). Same day,
+ * second decision: no image credit for photos either, so `imageCreditHtml` is empty unless the cover is
+ * the labelled AI illustration (see `coverNoteHtml` in images.ts).
  */
 export function assembleArticleHtml(input: AssembleInput): Assembled {
   const withInternal = insertInternalLinks(input.bodyHtml, input.internal, 3)
