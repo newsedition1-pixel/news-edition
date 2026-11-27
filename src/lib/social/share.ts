@@ -7,7 +7,8 @@ import { composeAll, webhookPayload, type ArticleForSocial } from './compose'
 import { configuredChannels, loadChannelConfig, secretsOf, sendFacebook, sendInstagram, sendTelegram, sendWebhook, sendX, type ChannelName, type SendResult, type XLinkMode } from './channels'
 import { FEED_DAILY_CAP, feedDecision } from './policy'
 import { addEntry, alreadyShared, chosenToday, lastChosenAt, parseLog, scrub, type ChannelResult, type ShareEntry, type XNote } from './log'
-import { X_LINK_DAILY_CAP, X_POLL_DAILY_CAP, planBreaking, planX, xDailyCap, xDay, xModeOf, type XMode } from './xplan'
+import { X_LINK_DAILY_CAP, X_POLL_DAILY_CAP, planBreaking, planX, xBreakingMinPublishers, xBreakingVerdict, xDailyCap, xDay, xModeOf, type XMode } from './xplan'
+import { isUrgentHeadline } from '@/lib/news/placement'
 import { composeXPost, isPollSafe } from './xcopy'
 import { writeXDraft } from './xwriter'
 
@@ -65,10 +66,11 @@ function describeX(post: { text: string; poll?: { options: string[] } | null; im
  * Shares one published article on every configured platform, according to the mode set in Admin >
  * News Automation (off by default). Telegram gets every article; X gets only breaking news (X_MODE, see
  * lib/social/xplan.ts); Instagram and Facebook get up to FEED_DAILY_CAP posts a day (lib/social/policy.ts). `strength` is how many trusted
- * publishers carried the story; leave it out for an article an editor published by hand.
+ * publishers carried the story (+1 if trending); `publishers` is the plain publisher count (X's breaking rule
+ * reads it). Leave both out for an article an editor published by hand.
  * Never throws: a failure here must not undo a published article.
  */
-export async function shareArticle(id: number, opts: { strength?: number } = {}): Promise<ShareEntry | null> {
+export async function shareArticle(id: number, opts: { strength?: number; publishers?: number } = {}): Promise<ShareEntry | null> {
   try {
     const mode = await getSocialMode()
     if (mode === 'off') return null
@@ -88,7 +90,8 @@ export async function shareArticle(id: number, opts: { strength?: number } = {})
     const set = composeAll(article, { xLink })
 
     // X (lib/social/xplan.ts). Default, since 27 Nov 2026: breaking news only, i.e. an article that carries the
-    // breaking flag (its row says so by now: the scheduler writes it before it calls us, an editor ticks it).
+    // breaking flag (its row says so by now: the scheduler writes it before it calls us, an editor ticks it) or,
+    // for a scheduled story, one carried by 2+ trusted publishers with an urgent headline (X_BREAKING_MIN_PUBLISHERS).
     // X_MODE=growth: a few confirmed stories a day, each with its picture, one poll, the link only on the best.
     // X_MODE=legacy: every article, plain text.
     let xPost = set.x
@@ -96,10 +99,17 @@ export async function shareArticle(id: number, opts: { strength?: number } = {})
     let xSkip: string | null = null
     const xMode = xModeOf(process.env.X_MODE)
     if (cfg.x && xMode !== 'legacy') {
+      const verdict = xBreakingVerdict({
+        flagged: loaded.breaking,
+        publishers: opts.publishers,
+        urgent: isUrgentHeadline(article.title),
+        minPublishers: xBreakingMinPublishers(process.env.X_BREAKING_MIN_PUBLISHERS),
+      })
       const plan =
         xMode === 'breaking'
           ? planBreaking({
-              breaking: loaded.breaking,
+              breaking: verdict.breaking,
+              breakingReason: verdict.reason,
               today: xDay(log, now, dry),
               linkMode: cfg.xLinkMode,
               dailyCap: xDailyCap(process.env.X_DAILY_CAP),

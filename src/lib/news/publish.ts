@@ -99,7 +99,7 @@ export async function saveBuiltArticle(
     revalidatePath(`/article/${article.slug}`)
     revalidatePath('/')
     // Social media (off unless the owner turned it on); never throws.
-    await shareArticle(article.id, { strength: opts.strength })
+    await shareArticle(article.id, { strength: opts.strength, publishers: opts.publishers })
   }
   revalidatePath('/admin/articles')
 
