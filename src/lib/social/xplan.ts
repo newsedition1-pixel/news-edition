@@ -9,8 +9,9 @@
  * is always posted (inside the daily limit). Pure and unit-tested.
  *
  * Owner decision 27 Nov 2026 ("x account me sirf breaking news post kiya kro"): the default mode is now
- * `breaking` (see `planBreaking`): X gets an article only when it carries the site's breaking flag. The
- * growth plan above is kept behind X_MODE=growth.
+ * `breaking` (see `planBreaking`): X gets an article only when it is breaking news, i.e. it carries the
+ * site's breaking flag or (same day, owner "ok krdo") 2+ trusted publishers carried it and its headline is
+ * urgent (`xBreakingVerdict`). The growth plan above is kept behind X_MODE=growth.
  */
 import { FEED_FROM_HOUR, FEED_TO_HOUR, STRONG_PUBLISHERS, allowedSoFar, istDay, istHours } from './policy'
 import type { ShareEntry } from './log'
@@ -127,9 +128,40 @@ export function planX(i: XPlanInput): XPlan {
   }
 }
 
+/**
+ * Publishers needed for X's own, looser breaking rule: a story carried by this many trusted publishers with an
+ * urgent headline is tweeted even when the site did not flag it breaking (the site flag needs 3, see
+ * `BREAKING_MIN_PUBLISHERS` in lib/news/placement.ts, and at most two at a time). Override with
+ * X_BREAKING_MIN_PUBLISHERS (2 to 10); 3 or more makes X follow the site flag in practice.
+ */
+export const X_BREAKING_MIN_PUBLISHERS_DEFAULT = 2
+export const X_BREAKING_MIN_PUBLISHERS_MAX = 10
+
+/** X_BREAKING_MIN_PUBLISHERS from the environment, kept in a sane range. */
+export function xBreakingMinPublishers(raw: string | undefined): number {
+  const n = Number.parseInt((raw ?? '').trim(), 10)
+  return Number.isFinite(n) && n >= 2 ? Math.min(n, X_BREAKING_MIN_PUBLISHERS_MAX) : X_BREAKING_MIN_PUBLISHERS_DEFAULT
+}
+
+/**
+ * Is this article breaking news for X? Yes when it carries the site's breaking flag (3+ publishers, urgent
+ * headline, or an editor's tick), or, for a scheduled story, when `minPublishers` or more trusted publishers
+ * carried it and its headline is urgent. `publishers` is undefined for an article an editor published by hand:
+ * only the flag counts there. `urgent` comes from `isUrgentHeadline` (lib/news/placement.ts).
+ */
+export function xBreakingVerdict(i: { flagged: boolean; publishers: number | undefined; urgent: boolean; minPublishers: number }): { breaking: boolean; reason: string } {
+  if (i.flagged) return { breaking: true, reason: 'breaking news' }
+  if (i.publishers !== undefined && i.publishers >= i.minPublishers && i.urgent) {
+    return { breaking: true, reason: `breaking news: urgent story carried by ${i.publishers} publishers` }
+  }
+  return { breaking: false, reason: 'not breaking news: X posts breaking news only' }
+}
+
 export interface BreakingPlanInput {
-  /** The article carries the breaking flag: set by `decidePlacement` (lib/news/placement.ts) for a scheduled article, by the editor's own tick for a manual one. */
+  /** The article is breaking news for X: `xBreakingVerdict` (the site's breaking flag, or 2+ publishers and an urgent headline). */
   breaking: boolean
+  /** Why: shown in the share log. Defaults to 'breaking news'. */
+  breakingReason?: string
   today: XDay
   linkMode: XLinkMode
   dailyCap: number
@@ -139,9 +171,10 @@ export interface BreakingPlanInput {
 }
 
 /**
- * Breaking-news mode: X gets an article only when it is flagged breaking. It goes out at once, at any hour
- * and without spacing (breaking news does not wait for a slot; placement.ts already allows only two at a
- * time and only for 6 hours), with its link, because the point is to bring readers to the story (the link
+ * Breaking-news mode: X gets an article only when it is breaking news (`xBreakingVerdict`: flagged, or 2+
+ * publishers with an urgent headline). It goes out at once, at any hour and without spacing (breaking news
+ * does not wait for a slot; the daily limit below is the only brake, the site's "two at a time" applies to
+ * the site flag, not to X), with its link, because the point is to bring readers to the story (the link
  * budget of `X_LINK_DAILY_CAP` and `X_LINK_MODE=never` still apply), and with its picture when the cover is a
  * real photo. No poll, no ordinary story. The daily limit stays as a guard against a runaway.
  */
@@ -152,7 +185,7 @@ export function planBreaking(i: BreakingPlanInput): XPlan {
     format: 'post',
     link: i.linkMode !== 'never' && i.today.links < X_LINK_DAILY_CAP,
     image: i.hasImage && !i.aiCover,
-    reason: 'breaking news',
+    reason: i.breakingReason ?? 'breaking news',
   }
 }
 

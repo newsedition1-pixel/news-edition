@@ -50,10 +50,15 @@ export const FEATURED_MAX_PER_CATEGORY_PER_DAY = 2
 const URGENT_RE =
   /\b(killed|dead|dies|died|death toll|deaths?|attack(?:s|ed)?|blasts?|explosions?|earthquake|cyclone|floods?|crash(?:es|ed)?|collapse[sd]?|arrested|resigns?|resignation|ceasefire|airstrikes?|verdict|sentenced|dissolved|curfew|evacuat\w+|hostages?|assassinat\w+|terror\w*|massacre|shot dead|lockdown)\b/i
 
+/** The headline reports something urgent (a death, attack, disaster, arrest, verdict ...). Also used by the X planner. */
+export function isUrgentHeadline(title: string): boolean {
+  return URGENT_RE.test(title)
+}
+
 export function decidePlacement(input: PlacementInput, ctx: PlacementContext): Placement {
   const notes: string[] = []
 
-  const urgent = URGENT_RE.test(input.title)
+  const urgent = isUrgentHeadline(input.title)
   let breaking = false
   if (input.publishers < BREAKING_MIN_PUBLISHERS) notes.push(`not breaking: ${input.publishers} publisher(s), needs ${BREAKING_MIN_PUBLISHERS}`)
   else if (!urgent) notes.push('not breaking: headline is not urgent news')

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { X_DAILY_CAP_DEFAULT, X_LINK_DAILY_CAP, X_MIN_GAP_MS, X_QUIET_GAP_MS, planBreaking, planX, xDailyCap, xDay, xModeOf, type BreakingPlanInput, type XDay, type XPlanInput } from './xplan'
+import { X_BREAKING_MIN_PUBLISHERS_DEFAULT, X_DAILY_CAP_DEFAULT, X_LINK_DAILY_CAP, X_MIN_GAP_MS, X_QUIET_GAP_MS, planBreaking, planX, xBreakingMinPublishers, xBreakingVerdict, xDailyCap, xDay, xModeOf, type BreakingPlanInput, type XDay, type XPlanInput } from './xplan'
+import { isUrgentHeadline } from '../news/placement'
 import type { ShareEntry } from './log'
 
 /** 18:00 IST on 22 Nov 2026. */
@@ -168,4 +169,41 @@ test('breaking mode: the daily limit still holds as a guard', () => {
   const full = { ...none, posts: 3 }
   assert.equal(planBreaking(breakingInput({ today: full, dailyCap: 3 })).format, 'skip')
   assert.equal(planBreaking(breakingInput({ today: full, dailyCap: 4 })).format, 'post')
+})
+
+test('27 Nov 2026: X needs 2 publishers and an urgent headline, the site flag needs 3', () => {
+  const min = X_BREAKING_MIN_PUBLISHERS_DEFAULT
+  assert.equal(min, 2)
+  const urgent = isUrgentHeadline('Six killed as bus falls into gorge in Himachal')
+  assert.equal(urgent, true)
+  // two publishers + urgent headline, no site flag: tweeted, and the log line says why
+  const two = xBreakingVerdict({ flagged: false, publishers: 2, urgent, minPublishers: min })
+  assert.equal(two.breaking, true)
+  assert.match(two.reason, /2 publishers/)
+  // one publisher, or a calm headline, is not breaking
+  assert.equal(xBreakingVerdict({ flagged: false, publishers: 1, urgent, minPublishers: min }).breaking, false)
+  assert.equal(xBreakingVerdict({ flagged: false, publishers: 4, urgent: false, minPublishers: min }).breaking, false)
+  // the site flag always counts, with or without a publisher count (an editor's tick has none)
+  assert.equal(xBreakingVerdict({ flagged: true, publishers: undefined, urgent: false, minPublishers: min }).breaking, true)
+  assert.equal(xBreakingVerdict({ flagged: true, publishers: 1, urgent: false, minPublishers: min }).reason, 'breaking news')
+  // an article an editor published by hand carries no publisher count: only the flag counts
+  assert.equal(xBreakingVerdict({ flagged: false, publishers: undefined, urgent, minPublishers: min }).breaking, false)
+})
+
+test('X_BREAKING_MIN_PUBLISHERS: default 2, never below 2, capped at 10; 3 gives back the strict rule', () => {
+  assert.equal(xBreakingMinPublishers(undefined), 2)
+  assert.equal(xBreakingMinPublishers(''), 2)
+  assert.equal(xBreakingMinPublishers('1'), 2)
+  assert.equal(xBreakingMinPublishers('abc'), 2)
+  assert.equal(xBreakingMinPublishers('3'), 3)
+  assert.equal(xBreakingMinPublishers('99'), 10)
+  // with 3, a two-publisher urgent story is no longer breaking for X
+  assert.equal(xBreakingVerdict({ flagged: false, publishers: 2, urgent: true, minPublishers: xBreakingMinPublishers('3') }).breaking, false)
+})
+
+test('breaking mode: the reason of the verdict reaches the plan', () => {
+  const v = xBreakingVerdict({ flagged: false, publishers: 3, urgent: true, minPublishers: 2 })
+  assert.equal(planBreaking(breakingInput({ breaking: v.breaking, breakingReason: v.reason })).reason, 'breaking news: urgent story carried by 3 publishers')
+  const no = xBreakingVerdict({ flagged: false, publishers: 1, urgent: true, minPublishers: 2 })
+  assert.match(planBreaking(breakingInput({ breaking: no.breaking, breakingReason: no.reason })).reason, /breaking news only/)
 })
