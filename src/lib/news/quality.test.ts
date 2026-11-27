@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { aiPhraseHits, analysisPoints, assessArticle, copiedPassages, copyStats, extractFigures, extractQuotes, repetitionIssues, sanitizeArticleHtml, sentenceOverlap, ungroundedProperNouns } from './quality'
+import { aiPhraseHits, analysisPoints, assessArticle, copiedPassages, copyStats, extractFigures, extractQuotes, outletAttributions, repetitionIssues, sanitizeArticleHtml, sentenceOverlap, ungroundedProperNouns } from './quality'
 
 const SOURCE = `The Reserve Bank of India kept the repo rate unchanged at 6.5 per cent on Friday, Governor Sanjay Malhotra said after the three day meeting of the monetary policy committee in Mumbai. Retail inflation stood at 4.2 per cent in October, up from 3.7 per cent a month earlier, according to government data. "We will remain watchful on food prices," Malhotra told reporters. The committee voted 5 to 1 to hold rates. Economists at several banks expect no cut before February. Home loan borrowers will see no change in their monthly instalments for now, and the central bank also left the cash reserve ratio at 4 per cent. The bank projected growth of 6.8 per cent for the year.`
 
@@ -24,7 +24,7 @@ function filler(words: number, seed: number): string {
 
 function goodHtml(extra = ''): string {
   const paras = Array.from({ length: 9 }, (_, i) => `<p>${filler(75, i + 3)}</p>`)
-  paras[0] = `<p>The Reserve Bank of India kept its repo rate at 6.5 per cent on Friday, according to The Hindu, leaving home loan instalments unchanged. ${filler(40, 99)}</p>`
+  paras[0] = `<p>The Reserve Bank of India kept its repo rate at 6.5 per cent on Friday, the governor said, leaving home loan instalments unchanged. ${filler(40, 99)}</p>`
   return `${paras.slice(0, 4).join('')}<h2>What it means for borrowers</h2>${paras.slice(4, 6).join('')}<h2>Analysis: why the timing matters</h2>${paras.slice(6, 8).join('')}<h2>What comes next</h2>${paras.slice(8).join('')}${extra}`
 }
 
@@ -46,7 +46,7 @@ test('a long, original, grounded article passes', () => {
 })
 
 test('an article under the minimum length is blocked', () => {
-  const r = assessArticle({ ...base, contentHtml: `<p>The Reserve Bank of India kept its repo rate at 6.5 per cent according to The Hindu. ${filler(100, 1)}</p>` })
+  const r = assessArticle({ ...base, contentHtml: `<p>The Reserve Bank of India kept its repo rate at 6.5 per cent on Friday. ${filler(100, 1)}</p>` })
   assert.equal(r.ok, false)
   assert.match(r.blocking.join(' '), /at least 600/)
 })
@@ -85,11 +85,33 @@ test('stock AI phrases are blocked at two hits, warned at one', () => {
   assert.deepEqual(aiPhraseHits('Plain direct reporting of the rate decision.'), [])
 })
 
-test('the publisher must be named near the top', () => {
-  const html = goodHtml().replace('according to The Hindu, ', '')
-  const r = assessArticle({ ...base, contentHtml: html })
+test('an article that names no outlet passes: the publisher is no longer required (28 Nov 2026)', () => {
+  const r = assessArticle({ ...base, contentHtml: goodHtml() })
+  assert.ok(r.ok)
+  assert.ok(!r.blocking.join(' ').includes('news outlet'))
+})
+
+test('naming an outlet or agency as the source of a fact is blocked', () => {
+  const named = goodHtml().replace('the governor said,', 'according to The Hindu,')
+  const r = assessArticle({ ...base, contentHtml: named })
   assert.equal(r.ok, false)
-  assert.match(r.blocking.join(' '), /named in the first three paragraphs/)
+  assert.match(r.blocking.join(' '), /names a news outlet as its source/)
+  const wire = assessArticle({ ...base, contentHtml: goodHtml().replace('the governor said,', 'PTI reported,') })
+  assert.equal(wire.ok, false)
+  assert.match(wire.blocking.join(' '), /"PTI reported"/)
+  const inFaq = assessArticle({ ...base, contentHtml: goodHtml(), faqs: [{ question: 'Is it confirmed?', answer: 'Yes, as The Hindu noted on Friday.' }] })
+  assert.match(inFaq.blocking.join(' '), /names a news outlet as its source/)
+})
+
+test('outletAttributions finds attributions in either order and ignores a bare mention', () => {
+  const names = ['The Hindu', 'NDTV', 'Indian Express']
+  assert.deepEqual(outletAttributions('The repo rate was held, according to The Hindu.', names), ['according to The Hindu'])
+  assert.deepEqual(outletAttributions('NDTV reported that rates held.', names), ['NDTV reported'])
+  assert.deepEqual(outletAttributions('The minister told the Indian Express on Friday.', names), ['told the Indian Express'])
+  assert.deepEqual(outletAttributions("The Hindu's report said so.", names), ["The Hindu's report"])
+  assert.deepEqual(outletAttributions('Press Trust of India noted the delay.', []), ['Press Trust of India noted'])
+  assert.deepEqual(outletAttributions('The regulator said the rate was held and the court told the bank to reply.', names), [])
+  assert.deepEqual(outletAttributions('A Hindu temple trust and an NDTV anchor were mentioned in the plea.', names), [])
 })
 
 test('weak, clickbait or all-caps headlines are blocked', () => {
@@ -139,7 +161,7 @@ test('copied passages are shown so the model knows what to rebuild', () => {
 
 test('headings in Title Case do not count as invented names; the copy message names the passages', () => {
   const sourceText = 'The tribunal heard the plea on Friday. The ministry said the scheme will continue for two more years and thousands of families will benefit from the new rules announced this week by officials in the capital city.'
-  const body = '<p>According to The Hindu, the tribunal heard the plea on Friday.</p><h2>What The Findings Mean For Families</h2><p>The ministry said the scheme will continue for two more years and thousands of families will benefit from the new rules announced this week by officials in the capital city.</p>'
+  const body = '<p>The tribunal heard the plea on Friday.</p><h2>What The Findings Mean For Families</h2><p>The ministry said the scheme will continue for two more years and thousands of families will benefit from the new rules announced this week by officials in the capital city.</p>'
   const report = assessArticle({ title: 'Tribunal hears the plea as the ministry extends the scheme', contentHtml: body, faqs: [], sourceText, focusKeyword: 'tribunal plea', seoTitle: 'Tribunal plea', seoDescription: 'x', minWords: 5, publisherNames: ['The Hindu'] })
   assert.equal(report.ungroundedNames.includes('Findings'), false)
   assert.equal(report.ungroundedNames.includes('Hindu'), false)

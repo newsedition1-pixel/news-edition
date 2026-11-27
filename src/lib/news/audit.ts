@@ -342,7 +342,7 @@ function assessSeo(input: AuditInput, wordCount: number, faqs: number): { score:
     { id: 'length', label: 'Body of 600 words or more', pass: wordCount >= 600, weight: 5, applicable: true },
     { id: 'faq', label: 'At least two FAQs', pass: faqs >= 2, weight: 10, applicable: true },
     { id: 'internal', label: 'Links to related articles on the site', pass: (input.links?.internal ?? 0) >= 1, weight: 10, applicable: !!input.links },
-    { id: 'external', label: 'Links to the publishers', pass: (input.links?.external ?? 0) >= 1, weight: 5, applicable: !!input.links },
+    // 'Links to the publishers' was removed on 28 Nov 2026: articles no longer name or link their news sources.
     { id: 'alt', label: 'Cover image has alt text', pass: !!input.cover?.alt && input.cover.alt.trim().length > 5, weight: 5, applicable: !!input.cover },
   ]
   return { score: scoreChecks(checks), issues: checks.filter((c) => c.applicable && !c.pass).map((c) => c.label) }
@@ -368,16 +368,14 @@ function assessDiscover(input: AuditInput, wordCount: number, analysis: number |
 }
 
 function assessEeat(input: AuditInput, articleText: string, quotes: number): { score: number; issues: string[] } {
-  const lower = articleText.toLowerCase()
-  const named = input.publisherNames.filter((n) => lower.includes(n.toLowerCase()))
   const attributions = (articleText.match(/\b(said|according to|told|reported|stated|announced|confirmed|wrote)\b/gi) || []).length
   const official = quotes >= 1 || /\b(in a statement|press release|official statement|said in a)\b/i.test(articleText)
   const checks: Check[] = [
-    { id: 'publishers', label: 'Two or more trusted publishers are named', pass: named.length >= Math.min(2, Math.max(1, input.publisherNames.length)), weight: 25, applicable: true },
+    // 'Two or more trusted publishers are named' and 'Sources are listed at the end with links' were removed on
+    // 28 Nov 2026 (owner decision: the article never names its news sources); the score is out of the checks left.
     { id: 'attribution', label: 'Key facts are attributed (said, according to, reported)', pass: attributions >= 3, weight: 15, applicable: true },
     { id: 'statement', label: 'Includes an official statement or a direct quotation', pass: official, weight: 15, applicable: true },
     { id: 'documents', label: 'Links to an official document or primary source', pass: (input.links?.documents ?? 0) >= 1, weight: 15, applicable: !!input.links },
-    { id: 'sources', label: 'Sources are listed at the end with links', pass: (input.links?.external ?? 0) >= 1, weight: 15, applicable: !!input.links },
     { id: 'credit', label: 'The cover image is credited or labelled', pass: input.cover?.kind !== 'none', weight: 5, applicable: !!input.cover },
     { id: 'author', label: 'The author has a public profile with a bio', pass: !!input.author?.hasBio, weight: 10, applicable: !!input.author },
   ]

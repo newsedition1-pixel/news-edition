@@ -16,7 +16,7 @@ test('length target never goes below the minimum', () => {
   assert.match(buildSystemPrompt(100, 0, 600), /"faqs": an empty array/)
 })
 
-test('user prompt wraps each report and names the publishers', () => {
+test('user prompt wraps each report and never gives the writer an outlet name', () => {
   const u = buildUserPrompt({
     headline: 'RBI holds rates',
     reports: [
@@ -28,8 +28,8 @@ test('user prompt wraps each report and names the publishers', () => {
     faqCount: 6,
     trendTerm: 'repo rate',
   })
-  assert.match(u, /<report n="1" publisher="The Hindu" headline="RBI 'holds' rates">/)
-  assert.match(u, /Publishers: The Hindu, Indian Express/)
+  assert.match(u, /<report n="1" headline="RBI 'holds' rates">/)
+  assert.doesNotMatch(u, /The Hindu|Indian Express|publisher/i)
   assert.match(u, /trending in India for the search term "repo rate"/)
   assert.match(u, /Business \(slug: business\)/)
 })
@@ -81,4 +81,12 @@ test('retry prompt adds the rebuild advice for audit "too close" issues too, not
   assert.match(close, /Change the order of the information/)
   assert.match(close, /list of names must be shortened/)
   assert.doesNotMatch(buildRetryPrompt(['bad figure']), /Change the order of the information/)
+})
+
+test('system prompt forbids naming the source in the article (owner decision 28 Nov 2026)', () => {
+  const sys = buildSystemPrompt(100, 0, 600)
+  assert.match(sys, /NEVER NAME A SOURCE/)
+  assert.match(sys, /Do not name any publisher or news outlet in the lead/)
+  assert.doesNotMatch(sys, /according to The Hindu/)
+  assert.doesNotMatch(sys, /name that publisher/)
 })

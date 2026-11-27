@@ -5,7 +5,7 @@
  * trust: published NewsEdition articles for internal links, and the publishers (and official
  * documents) the story actually came from for external links. Nothing is invented.
  */
-import { buildSourceNote, cleanSourceName, safeHttpUrl } from '../sources'
+import { cleanSourceName, safeHttpUrl } from '../sources'
 import { isPrimarySourceUrl } from './publishers'
 import { wrapSources } from './sourcesBlock'
 
@@ -146,19 +146,19 @@ export interface Assembled {
 
 /**
  * Final article HTML: body with inline internal links, then related reading, then one sources
- * block: further reading, the image credit and the standard "Source:" line (the Reel automation
- * reads that line). Publisher names stay plain text in the body ("according to The Hindu"); every
- * link to a publisher lives in the sources block at the very end (owner decision, 21 Nov 2026).
+ * block at the very end: official documents ("Further reading") and the image credit.
+ * Owner decision 28 Nov 2026: the article never names its news sources, so there is no "Source:"
+ * line and no link to another publisher (`primary` and `others` are accepted but not shown). The
+ * image credit stays: a photo licence (Wikimedia, a publisher's own picture) requires it.
  */
 export function assembleArticleHtml(input: AssembleInput): Assembled {
   const withInternal = insertInternalLinks(input.bodyHtml, input.internal, 3)
   const related = relatedArticlesBlock(input.internal, withInternal.linked, 3)
-  const further = furtherReadingBlock(input.others, input.documents)
+  const further = furtherReadingBlock([], input.documents)
   const credit = input.imageCreditHtml ?? ''
-  const sourceNote = buildSourceNote({ name: input.primary.name, url: input.primary.url })
-  // Further reading, the image credit and the Source line go into one marked block at the very end;
-  // the article page shows that block small, at the bottom of the page (see sourcesBlock.ts).
-  const html = [withInternal.html.trimEnd(), related, wrapSources([further, credit, sourceNote])].filter(Boolean).join('\n')
+  // Further reading (official documents only) and the image credit go into one marked block at the
+  // very end; the article page shows that block small, at the bottom of the page (see sourcesBlock.ts).
+  const html = [withInternal.html.trimEnd(), related, wrapSources([further, credit])].filter(Boolean).join('\n')
 
   const count = (re: RegExp) => (html.match(re) || []).length
   return {

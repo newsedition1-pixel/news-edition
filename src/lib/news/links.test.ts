@@ -42,37 +42,34 @@ test('only official document links are picked from a report', () => {
   assert.ok(docs[0].label.includes('rbi.org.in'))
 })
 
-test('assembled article ends with credit and the standard Source line, and counts links', () => {
-  const body = '<p>According to The Hindu, the repo rate was held.</p><p>Borrowers watch the repo rate and the monsoon.</p>'
+test('assembled article ends with the official documents and the image credit, and has no Source line (28 Nov 2026)', () => {
+  const body = '<p>The regulator held the repo rate.</p><p>Borrowers watch the repo rate and the monsoon.</p>'
   const out = assembleArticleHtml({
     bodyHtml: body,
     internal: cands,
     primary: { name: 'The Hindu', url: 'https://www.thehindu.com/a.ece' },
     others: [{ name: 'Indian Express', url: 'https://indianexpress.com/b', title: 'Rate held' }],
-    documents: [],
+    documents: [{ label: 'RBI statement (rbi.org.in)', url: 'https://www.rbi.org.in/x' }],
     imageCreditHtml: '<p><em>Cover image: test.</em></p>',
   })
-  assert.ok(out.html.trimEnd().endsWith('</a></p>\n</div>'))
+  assert.ok(out.html.trimEnd().endsWith('</em></p>\n</div>'))
   assert.match(out.html, /<div class="article-sources">/)
-  assert.match(out.html, /<p><strong>Source:<\/strong> <a href="https:\/\/www\.thehindu\.com\/a\.ece"/)
   assert.ok(out.html.indexOf('article-sources') > out.html.indexOf('Borrowers watch'))
-  assert.ok(out.html.indexOf('Cover image') < out.html.indexOf('Source:'))
+  assert.ok(out.html.indexOf('RBI statement') < out.html.indexOf('Cover image'))
+  assert.doesNotMatch(out.html, /Source:/)
+  assert.doesNotMatch(out.html, /thehindu|indianexpress|The Hindu|Indian Express/)
   assert.ok(out.internalLinks >= 1)
-  // Further reading + the Source line; the publisher's name in the text is not a link.
-  assert.ok(out.externalLinks >= 2)
+  assert.equal(out.externalLinks, 1) // the official document only
 })
 
-test('no link to a publisher appears in the text before the sources block', () => {
-  const body = '<p>According to The Hindu, the repo rate was held. The Hindu also noted inflation.</p><p>Indian Express reported the same.</p>'
+test('an article with no document and no image credit has no sources block at all', () => {
   const out = assembleArticleHtml({
-    bodyHtml: body,
+    bodyHtml: '<p>The regulator held the repo rate.</p>',
     internal: [],
     primary: { name: 'The Hindu', url: 'https://www.thehindu.com/a.ece' },
     others: [{ name: 'Indian Express', url: 'https://indianexpress.com/b', title: 'Rate held' }],
     documents: [],
   })
-  const before = out.html.slice(0, out.html.indexOf('<div class="article-sources">'))
-  assert.ok(before.includes('According to The Hindu, the repo rate was held.'))
-  assert.equal((before.match(/<a /g) || []).length, 0)
-  assert.ok(out.html.slice(before.length).includes('thehindu.com/a.ece'))
+  assert.doesNotMatch(out.html, /article-sources/)
+  assert.doesNotMatch(out.html, /<a /)
 })
