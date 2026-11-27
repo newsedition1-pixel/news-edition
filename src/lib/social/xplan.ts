@@ -7,6 +7,10 @@
  * real photo, one poll a day, one video, and the article link only on a few (a post with a link costs 13
  * times more on the X API). Telegram still gets every article. An article an editor published by hand
  * is always posted (inside the daily limit). Pure and unit-tested.
+ *
+ * Owner decision 27 Nov 2026 ("x account me sirf breaking news post kiya kro"): the default mode is now
+ * `breaking` (see `planBreaking`): X gets an article only when it carries the site's breaking flag. The
+ * growth plan above is kept behind X_MODE=growth.
  */
 import { FEED_FROM_HOUR, FEED_TO_HOUR, STRONG_PUBLISHERS, allowedSoFar, istDay, istHours } from './policy'
 import type { ShareEntry } from './log'
@@ -34,7 +38,7 @@ export const POLL_TO_HOUR = 22
 export const POLL_DURATION_MINUTES = 24 * 60
 
 export type XLinkMode = 'always' | 'top' | 'never'
-export type XMode = 'growth' | 'legacy'
+export type XMode = 'breaking' | 'growth' | 'legacy'
 
 export interface XDay {
   posts: number
@@ -123,13 +127,47 @@ export function planX(i: XPlanInput): XPlan {
   }
 }
 
+export interface BreakingPlanInput {
+  /** The article carries the breaking flag: set by `decidePlacement` (lib/news/placement.ts) for a scheduled article, by the editor's own tick for a manual one. */
+  breaking: boolean
+  today: XDay
+  linkMode: XLinkMode
+  dailyCap: number
+  hasImage: boolean
+  /** The cover is a labelled AI illustration: it is not attached to a tweet. */
+  aiCover: boolean
+}
+
+/**
+ * Breaking-news mode: X gets an article only when it is flagged breaking. It goes out at once, at any hour
+ * and without spacing (breaking news does not wait for a slot; placement.ts already allows only two at a
+ * time and only for 6 hours), with its link, because the point is to bring readers to the story (the link
+ * budget of `X_LINK_DAILY_CAP` and `X_LINK_MODE=never` still apply), and with its picture when the cover is a
+ * real photo. No poll, no ordinary story. The daily limit stays as a guard against a runaway.
+ */
+export function planBreaking(i: BreakingPlanInput): XPlan {
+  if (!i.breaking) return skip('not breaking news: X posts breaking news only')
+  if (i.today.posts >= i.dailyCap) return skip(`daily limit of ${i.dailyCap} X posts reached`)
+  return {
+    format: 'post',
+    link: i.linkMode !== 'never' && i.today.links < X_LINK_DAILY_CAP,
+    image: i.hasImage && !i.aiCover,
+    reason: 'breaking news',
+  }
+}
+
 /** X_DAILY_CAP from the environment, kept in a sane range. */
 export function xDailyCap(raw: string | undefined): number {
   const n = Number.parseInt((raw ?? '').trim(), 10)
   return Number.isFinite(n) && n >= 1 ? Math.min(n, X_DAILY_CAP_MAX) : X_DAILY_CAP_DEFAULT
 }
 
-/** "growth" (default): the plan above. "legacy": every article as a plain text tweet, the behaviour before 22 Nov 2026. */
+/**
+ * "breaking" (default since 27 Nov 2026): only articles flagged breaking, see `planBreaking`. "growth": the
+ * curated plan of `planX` (20 posts a day, a poll, the daily video). "legacy": every article as a plain text
+ * tweet, the behaviour before 22 Nov 2026.
+ */
 export function xModeOf(raw: string | undefined): XMode {
-  return (raw ?? '').trim().toLowerCase() === 'legacy' ? 'legacy' : 'growth'
+  const v = (raw ?? '').trim().toLowerCase()
+  return v === 'legacy' ? 'legacy' : v === 'growth' ? 'growth' : 'breaking'
 }

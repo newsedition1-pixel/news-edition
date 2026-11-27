@@ -7,7 +7,7 @@ import { configuredChannels, loadChannelConfig, sendXVideo } from './channels'
 import { addEntry, scrub, type ShareEntry } from './log'
 import { loadArticle, loadShareLog } from './share'
 import { composeXPost } from './xcopy'
-import { X_VIDEO_DAILY_CAP } from './xplan'
+import { X_VIDEO_DAILY_CAP, xModeOf } from './xplan'
 import { VIDEO_MAX_AGE_MS, alreadyVideoed, buildSpec, hindiScript, hindiWordCounts, pickVideoRows, videoLogId, videosToday, voiceScript, writeHindi, writeWords, type VideoCandidate, type VideoRow } from './xvideo'
 import { TTS_STYLE_HINDI, askJson, speak, writeXDraft } from './xwriter'
 
@@ -19,6 +19,8 @@ type Gate = { skip: string } | null
 async function gate(now: Date, log: ShareEntry[], test = false): Promise<Gate> {
   if ((await getSocialMode()) === 'off') return { skip: 'social posting is off' }
   if (!loadChannelConfig(process.env).x) return { skip: 'X is not set up' }
+  // Breaking-news mode (the default since 27 Nov 2026): X gets breaking news only, so no daily video. A test run still renders.
+  if (!test && xModeOf(process.env.X_MODE) === 'breaking') return { skip: 'X posts breaking news only (X_MODE=breaking), so there is no daily video' }
   // A test run (workflow started by hand with "test") only renders the video and posts nothing, so the daily limit does not apply.
   if (!test && videosToday(log, now) >= X_VIDEO_DAILY_CAP) return { skip: 'a video already went out today' }
   return null

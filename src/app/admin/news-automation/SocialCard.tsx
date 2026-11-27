@@ -10,7 +10,7 @@ export interface SocialStatusData {
   channels: { name: string; configured: boolean; who: string; needs: string[] }[]
   xLinkMode: 'always' | 'top' | 'never'
   today: { top: number; cap: number }
-  x: { mode: 'growth' | 'legacy'; posts: number; cap: number; links: number; linkCap: number; polls: number; pollCap: number }
+  x: { mode: 'breaking' | 'growth' | 'legacy'; posts: number; cap: number; links: number; linkCap: number; polls: number; pollCap: number }
   recent: {
     id: number
     title: string
@@ -85,9 +85,11 @@ export function SocialCard({ initial }: { initial: SocialStatusData }) {
       <p className={styles.note}>
         Each article goes out with its headline, a short summary and a few hashtags. Telegram gets every article; Instagram and Facebook get up to {status.today.cap} a day
         (between 7:00 and 23:00 IST, at least 25 minutes apart, spread over the day; {status.today.top} chosen today).
-        {status.x.mode === 'growth'
-          ? ` X is in growth mode (${status.x.posts} of ${status.x.cap} tweets today, at least 25 minutes apart), each with a hook and one checked fact, a photo when the cover is a real photo, and one poll a day in the evening (${status.x.polls} of ${status.x.pollCap} today). Links are kept for ${status.x.linkCap} tweets a day (${status.x.links} so far), because a tweet with a link costs far more on the X API.`
-          : ' X is in legacy mode: every article is tweeted.'}
+        {status.x.mode === 'breaking'
+          ? ` X is in breaking-news mode: only an article flagged breaking is tweeted (${status.x.posts} tweets today, limit ${status.x.cap}), at once and at any hour, with a hook, one checked fact, the link and a photo when the cover is a real photo. No other story, no poll and no daily video. Set X_MODE=growth to go back to ${status.x.cap} curated tweets a day.`
+          : status.x.mode === 'growth'
+            ? ` X is in growth mode (${status.x.posts} of ${status.x.cap} tweets today, at least 25 minutes apart), each with a hook and one checked fact, a photo when the cover is a real photo, and one poll a day in the evening (${status.x.polls} of ${status.x.pollCap} today). Links are kept for ${status.x.linkCap} tweets a day (${status.x.links} so far), because a tweet with a link costs far more on the X API.`
+            : ' X is in legacy mode: every article is tweeted.'}
         {' '}Preview only writes the posts below without sending anything.
       </p>
       <table className={styles.table}>
