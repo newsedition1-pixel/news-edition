@@ -7,7 +7,7 @@ import { composeAll, webhookPayload, type ArticleForSocial } from './compose'
 import { configuredChannels, loadChannelConfig, secretsOf, sendFacebook, sendInstagram, sendTelegram, sendWebhook, sendX, type ChannelName, type SendResult, type XLinkMode } from './channels'
 import { FEED_DAILY_CAP, feedDecision } from './policy'
 import { addEntry, alreadyShared, chosenToday, lastChosenAt, parseLog, scrub, type ChannelResult, type ShareEntry, type XNote } from './log'
-import { X_LINK_DAILY_CAP, X_POLL_DAILY_CAP, planX, xDailyCap, xDay, xModeOf, type XMode } from './xplan'
+import { X_LINK_DAILY_CAP, X_POLL_DAILY_CAP, planBreaking, planX, xDailyCap, xDay, xModeOf, type XMode } from './xplan'
 import { composeXPost, isPollSafe } from './xcopy'
 import { writeXDraft } from './xwriter'
 
@@ -17,10 +17,11 @@ export async function loadShareLog(): Promise<ShareEntry[]> {
   return parseLog(await getSetting(SOCIAL_LOG_KEY))
 }
 
-export async function loadArticle(id: number): Promise<{ article: ArticleForSocial; published: boolean } | null> {
+export async function loadArticle(id: number): Promise<{ article: ArticleForSocial; published: boolean; breaking: boolean } | null> {
   const [row] = await db
     .select({
       title: articles.title,
+      isBreaking: articles.isBreaking,
       slug: articles.slug,
       excerpt: articles.excerpt,
       tags: articles.tags,
@@ -38,6 +39,7 @@ export async function loadArticle(id: number): Promise<{ article: ArticleForSoci
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://newsedition.in').replace(/\/$/, '')
   return {
     published: row.status === 'published',
+    breaking: row.isBreaking,
     article: {
       title: row.title,
       excerpt: row.excerpt,
@@ -61,8 +63,8 @@ function describeX(post: { text: string; poll?: { options: string[] } | null; im
 
 /**
  * Shares one published article on every configured platform, according to the mode set in Admin >
- * News Automation (off by default). Telegram and X get every article; Instagram and Facebook get
- * the few top stories of the day (lib/social/policy.ts). `strength` is how many trusted
+ * News Automation (off by default). Telegram gets every article; X gets only breaking news (X_MODE, see
+ * lib/social/xplan.ts); Instagram and Facebook get up to FEED_DAILY_CAP posts a day (lib/social/policy.ts). `strength` is how many trusted
  * publishers carried the story; leave it out for an article an editor published by hand.
  * Never throws: a failure here must not undo a published article.
  */
@@ -85,23 +87,36 @@ export async function shareArticle(id: number, opts: { strength?: number } = {})
     const xLink = cfg.xLinkMode === 'always' || (cfg.xLinkMode === 'top' && decision.top)
     const set = composeAll(article, { xLink })
 
-    // X: a few confirmed stories a day, each with its picture, one poll, the link only on the best (lib/social/xplan.ts).
-    // X_MODE=legacy goes back to "every article, plain text".
+    // X (lib/social/xplan.ts). Default, since 27 Nov 2026: breaking news only, i.e. an article that carries the
+    // breaking flag (its row says so by now: the scheduler writes it before it calls us, an editor ticks it).
+    // X_MODE=growth: a few confirmed stories a day, each with its picture, one poll, the link only on the best.
+    // X_MODE=legacy: every article, plain text.
     let xPost = set.x
     let xNote: XNote | undefined
     let xSkip: string | null = null
-    if (cfg.x && xModeOf(process.env.X_MODE) === 'growth') {
-      const plan = planX({
-        now,
-        today: xDay(log, now, dry),
-        top: decision.top,
-        strength: opts.strength,
-        linkMode: cfg.xLinkMode,
-        dailyCap: xDailyCap(process.env.X_DAILY_CAP),
-        hasImage: !!article.imageUrl,
-        aiCover: set.aiCover,
-        pollSafe: isPollSafe(article),
-      })
+    const xMode = xModeOf(process.env.X_MODE)
+    if (cfg.x && xMode !== 'legacy') {
+      const plan =
+        xMode === 'breaking'
+          ? planBreaking({
+              breaking: loaded.breaking,
+              today: xDay(log, now, dry),
+              linkMode: cfg.xLinkMode,
+              dailyCap: xDailyCap(process.env.X_DAILY_CAP),
+              hasImage: !!article.imageUrl,
+              aiCover: set.aiCover,
+            })
+          : planX({
+              now,
+              today: xDay(log, now, dry),
+              top: decision.top,
+              strength: opts.strength,
+              linkMode: cfg.xLinkMode,
+              dailyCap: xDailyCap(process.env.X_DAILY_CAP),
+              hasImage: !!article.imageUrl,
+              aiCover: set.aiCover,
+              pollSafe: isPollSafe(article),
+            })
       if (plan.format === 'skip') {
         xSkip = plan.reason
         xNote = { format: 'skip', link: false, image: false, reason: plan.reason }
@@ -178,7 +193,7 @@ export async function shareArticle(id: number, opts: { strength?: number } = {})
 /** The environment variables each platform needs (names only; values are never shown). */
 const NEEDS: Record<ChannelName, { who: string; vars: string[] }> = {
   telegram: { who: 'every article', vars: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'] },
-  x: { who: 'a few confirmed stories a day, with picture; one poll', vars: ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET'] },
+  x: { who: 'breaking news only (X_MODE=growth: confirmed stories, one poll)', vars: ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET'] },
   facebook: { who: 'top stories', vars: ['META_PAGE_ACCESS_TOKEN', 'FACEBOOK_PAGE_ID'] },
   instagram: { who: 'top stories', vars: ['META_PAGE_ACCESS_TOKEN', 'INSTAGRAM_ACCOUNT_ID'] },
   webhook: { who: 'every article, marked top or not', vars: ['SOCIAL_WEBHOOK_URL'] },

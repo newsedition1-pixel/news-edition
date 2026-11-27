@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { X_DAILY_CAP_DEFAULT, X_LINK_DAILY_CAP, X_MIN_GAP_MS, X_QUIET_GAP_MS, planX, xDailyCap, xDay, xModeOf, type XDay, type XPlanInput } from './xplan'
+import { X_DAILY_CAP_DEFAULT, X_LINK_DAILY_CAP, X_MIN_GAP_MS, X_QUIET_GAP_MS, planBreaking, planX, xDailyCap, xDay, xModeOf, type BreakingPlanInput, type XDay, type XPlanInput } from './xplan'
 import type { ShareEntry } from './log'
 
 /** 18:00 IST on 22 Nov 2026. */
@@ -120,5 +120,52 @@ test('settings from the environment', () => {
   assert.equal(xDailyCap('0'), X_DAILY_CAP_DEFAULT)
   assert.equal(xDailyCap('500'), 40)
   assert.equal(xModeOf('legacy'), 'legacy')
-  assert.equal(xModeOf(undefined), 'growth')
+  assert.equal(xModeOf(' Growth '), 'growth')
+})
+
+test('27 Nov 2026: breaking news only is the default mode, growth and legacy stay behind X_MODE', () => {
+  assert.equal(xModeOf(undefined), 'breaking')
+  assert.equal(xModeOf(''), 'breaking')
+  assert.equal(xModeOf('breaking'), 'breaking')
+  assert.equal(xModeOf('anything else'), 'breaking')
+  assert.equal(xModeOf('growth'), 'growth')
+  assert.equal(xModeOf('LEGACY'), 'legacy')
+})
+
+function breakingInput(over: Partial<BreakingPlanInput> = {}): BreakingPlanInput {
+  return { breaking: true, today: none, linkMode: 'top', dailyCap: X_DAILY_CAP_DEFAULT, hasImage: true, aiCover: false, ...over }
+}
+
+test('breaking mode: an article without the breaking flag is never posted', () => {
+  const p = planBreaking(breakingInput({ breaking: false }))
+  assert.equal(p.format, 'skip')
+  assert.match(p.reason, /breaking news only/)
+  // a perfectly good ordinary story is still skipped, whatever the day looks like
+  assert.equal(planBreaking(breakingInput({ breaking: false, today: { ...none, posts: 0 } })).format, 'skip')
+})
+
+test('breaking mode: a breaking article goes out at once, with the link and its photo', () => {
+  const p = planBreaking(breakingInput())
+  assert.deepEqual({ format: p.format, link: p.link, image: p.image, reason: p.reason }, { format: 'post', link: true, image: true, reason: 'breaking news' })
+})
+
+test('breaking mode: no waiting for the 07:00-23:00 window, the spacing or the poll slot', () => {
+  // the planner has no clock input at all: the same plan at 03:00 IST and a post made a minute ago
+  const justNow = { ...none, posts: 1, postsInWindow: 1, lastAt: new Date(EVENING.getTime() - 60_000) }
+  assert.equal(planBreaking(breakingInput({ today: justNow })).format, 'post')
+  assert.notEqual(planBreaking(breakingInput()).format, 'poll')
+})
+
+test('breaking mode: the link follows the link mode and the link budget, a labelled AI illustration is not attached', () => {
+  assert.equal(planBreaking(breakingInput({ linkMode: 'never' })).link, false)
+  assert.equal(planBreaking(breakingInput({ linkMode: 'always' })).link, true)
+  assert.equal(planBreaking(breakingInput({ today: { ...none, links: X_LINK_DAILY_CAP } })).link, false)
+  assert.equal(planBreaking(breakingInput({ aiCover: true })).image, false)
+  assert.equal(planBreaking(breakingInput({ hasImage: false })).image, false)
+})
+
+test('breaking mode: the daily limit still holds as a guard', () => {
+  const full = { ...none, posts: 3 }
+  assert.equal(planBreaking(breakingInput({ today: full, dailyCap: 3 })).format, 'skip')
+  assert.equal(planBreaking(breakingInput({ today: full, dailyCap: 4 })).format, 'post')
 })
