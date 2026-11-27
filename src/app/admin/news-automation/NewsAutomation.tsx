@@ -182,7 +182,7 @@ export function NewsAutomation({ defaultWordLength, defaultAutoPublish }: { defa
             </label>
             <p className={styles.radio}>
               If neither exists, a labelled AI illustration is made. The NewsEdition logo is added to every cover.
-              Publisher photos are copyrighted; they are credited to the publisher.
+              Publisher photos are copyrighted. Since 28 Nov 2026 no credit line is added to photos (owner decision); the AI illustration keeps its label.
             </p>
           </fieldset>
 

@@ -28,7 +28,7 @@ export interface QualityInput {
   minWords?: number
   /** Current year, allowed in the text even when the source does not state it. */
   currentYear?: number
-  /** Publishers the story came from; at least one must be named near the top of the article. */
+  /** Publishers the story came from. Since 28 Nov 2026 (owner decision) none of them may be named as a source in the article. */
   publisherNames?: string[]
 }
 
@@ -428,6 +428,38 @@ export function analysisPoints(contentHtml: string): number | null {
   return null
 }
 
+/** Wire agencies whose names show up in datelines of the reports; treated like the story's own publishers. */
+const WIRE_AGENCIES = ['Press Trust of India', 'PTI', 'ANI', 'IANS', 'Reuters', 'Bloomberg']
+
+const ATTRIBUTION_VERBS = 'said|says|reported|reports|reporting|noted|notes|wrote|writes|described|describes|suggested|suggests|cited|cites|quoted|quotes|stated|states|confirmed|confirms|added|adds|explained|explains|learnt|learned'
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Places where an outlet is named as the source of a fact ("according to The Hindu", "PTI reported",
+ * "told Indian Express", "a report in ..."). A bare mention (a story about the outlet itself, a product
+ * name) is not matched. Returns the matched snippets.
+ */
+export function outletAttributions(text: string, publisherNames: string[]): string[] {
+  const hits: string[] = []
+  const seen = new Set<string>()
+  for (const raw of [...publisherNames, ...WIRE_AGENCIES]) {
+    const name = raw.replace(/^the\s+/i, '').trim()
+    if (name.length < 2 || seen.has(name.toLowerCase())) continue
+    seen.add(name.toLowerCase())
+    const n = escapeRegExp(name)
+    const before = new RegExp(`\\b(?:according to|as per|as reported by|reported by|reports? (?:in|by|from)|an? (?:[a-z]+ )?report (?:in|by|from)|citing|cited by|via|told|per|writing in|speaking to|spoke to|source:)\\s+(?:the\\s+)?${n}\\b`, 'i')
+    const after = new RegExp(`\\b(?:the\\s+)?${n}(?:'s|\u2019s)?\\s+(?:own\\s+)?(?:report|reports|reporting|coverage|analysis|editorial|correspondent|reporter|investigation|sources?|${ATTRIBUTION_VERBS})\\b`, 'i')
+    for (const re of [before, after]) {
+      const m = text.match(re)
+      if (m) hits.push(m[0].trim())
+    }
+  }
+  return hits
+}
+
 export function assessArticle(input: QualityInput): QualityReport {
   const minWords = input.minWords ?? MIN_WORDS_DEFAULT
   const bodyText = htmlToText(input.contentHtml)
@@ -478,11 +510,11 @@ export function assessArticle(input: QualityInput): QualityReport {
     warnings.push(`Stock phrase: ${phrases[0]}.`)
   }
 
-  if (input.publisherNames && input.publisherNames.length > 0) {
-    const opening = (input.contentHtml.match(/<p\b[\s\S]*?<\/p>/gi) || []).slice(0, 3).map((p) => htmlToText(p)).join(' ').toLowerCase()
-    if (!input.publisherNames.some((n) => opening.includes(n.toLowerCase()))) {
-      blocking.push(`None of ${input.publisherNames.join(', ')} is named in the first three paragraphs. Attribute the main facts to the publisher by name, in plain words.`)
-    }
+  // Owner decision 28 Nov 2026: the article never names its sources (it used to require the publisher
+  // in the first three paragraphs). A publisher or wire agency named as the source of a fact is blocked.
+  const outletHits = outletAttributions(fullText, input.publisherNames ?? [])
+  if (outletHits.length > 0) {
+    blocking.push(`The article names a news outlet as its source (${outletHits.slice(0, 3).map((h) => `"${h}"`).join('; ')}). Never name a newspaper, agency, channel or website as the source: state the fact plainly, and name only the official, ministry, court or company that actually said or did it.`)
   }
 
   const repetition = repetitionIssues(bodyText, input.faqs ?? [])

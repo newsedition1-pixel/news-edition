@@ -73,10 +73,9 @@ export default function EditorialPolicyPage() {
             mistake in any article, please report it through our Corrections page.
           </p>
           <p>
-            AI-assisted articles name the publisher that reported the story, link to it, and end with a
-            &quot;Source&quot; line. Cover images on these articles are either licensed photographs or the publisher&apos;s own
-            news photo, credited under the article, or are labelled as illustrations; they carry the NewsEdition
-            logo. Earlier AI-assisted articles may not follow all of this.
+            Where an official document exists, AI-assisted articles link to it under the article. Cover
+            images on these articles are photographs, or are labelled as illustrations; they carry the
+            NewsEdition logo. Earlier AI-assisted articles may not follow all of this.
           </p>
         </div>
       </div>

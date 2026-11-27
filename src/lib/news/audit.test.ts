@@ -25,7 +25,7 @@ function filler(words: number, seed: number): string {
 function html(opts: { lead?: string; extra?: string } = {}): string {
   const sizes = [60, 95, 70, 110, 80, 65, 90, 75, 100]
   const paras = sizes.map((n, i) => `<p>${filler(n, i + 3)}</p>`)
-  paras[0] = `<p>${opts.lead ?? 'The Reserve Bank of India kept its repo rate at 6.5 per cent on Friday, according to The Hindu, leaving home loan instalments unchanged, and NDTV reported the same.'} ${filler(30, 99)}</p>`
+  paras[0] = `<p>${opts.lead ?? 'The Reserve Bank of India kept its repo rate at 6.5 per cent on Friday, the governor said, leaving home loan instalments unchanged, and the committee voted to hold.'} ${filler(30, 99)}</p>`
   return `${paras.slice(0, 4).join('')}<h2>What it means for borrowers</h2>${paras.slice(4, 6).join('')}<h2>Analysis: why the timing matters</h2><p>${filler(40, 41)}</p><p>${filler(45, 42)}</p><h2>What comes next</h2>${paras.slice(6).join('')}${opts.extra ?? ''}`
 }
 
@@ -129,7 +129,7 @@ test('one unsupported claim asks for improvement, two hold the article', () => {
   assert.equal(one.decision, 'IMPROVE')
   const two = auditArticle(input({ llm: { ...noFindings, claims: [
     { claim: 'a', snippet: 'leaving home loan instalments unchanged', status: 'unsupported' },
-    { claim: 'b', snippet: 'and NDTV reported the same', status: 'unsupported' },
+    { claim: 'b', snippet: 'and the committee voted to hold', status: 'unsupported' },
   ] } }))
   assert.equal(two.decision, 'HOLD')
 })
