@@ -13,6 +13,8 @@ import { addFailed, hasFailed, parseFailed } from './failed'
 import { expireBreaking } from './placementDb'
 import type { Story } from './cluster'
 import { allowedSoFar, istDayStart, parseDailyCap } from './pace'
+import { xBreakingMinPublishers } from '@/lib/social/xplan'
+import { BREAKING_LANE_MAX_ATTEMPTS, BREAKING_LANE_MAX_TRIES, BREAKING_MIN_GAP_MS, breakingCandidates, parseBreakingExtra } from './breaking'
 
 /** Two runs closer together than this are treated as one (GitHub can fire a late run right behind the next). */
 const MIN_GAP_MS = 20 * 60 * 1000
@@ -105,6 +107,11 @@ function toStoryRef(s: Story): StoryRef {
  * One scheduled run: pick the category that has waited longest, take the best fresh story of that
  * category, write and publish it under that category's author. If no story fits (or it fails the
  * checks), try the next category. Publishes at most one article per run.
+ *
+ * Breaking news goes first (owner decision 28 Nov 2026, lib/news/breaking.ts): a fresh story carried by 2+ trusted
+ * publishers with an urgent headline is written before the category rotation, may use the gap after a recent article
+ * (5 minutes instead of 20) and the room beyond the daily pace (up to NEWS_BREAKING_EXTRA more articles a day), and
+ * is handed to X as breaking news. It still has to pass the fact check and the audit.
  */
 export async function runScheduledArticle(opts: { force?: boolean } = {}): Promise<ScheduleOutcome> {
   const startedAt = Date.now()
@@ -115,6 +122,9 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
   // Breaking is for the first hours only: take the flag off AI articles that are older than that.
   await expireBreaking().catch((err) => console.error('Expire breaking failed:', err))
 
+  // Why the normal flow must not run now (null = it may), and whether breaking news may still go out.
+  let blocked: string | null = null
+  let breakingRoom = true
   if (!opts.force) {
     const [recent] = await db
       .select({ createdAt: articles.createdAt })
@@ -122,8 +132,9 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
       .where(eq(articles.isAiGenerated, true))
       .orderBy(desc(articles.createdAt))
       .limit(1)
-    if (recent && Date.now() - recent.createdAt.getTime() < MIN_GAP_MS) {
-      return { ...out, message: 'An AI article was saved less than 20 minutes ago, so this run did nothing.' }
+    const sinceLast = recent ? Date.now() - recent.createdAt.getTime() : Number.POSITIVE_INFINITY
+    if (sinceLast < BREAKING_MIN_GAP_MS) {
+      return { ...out, message: 'An AI article was saved less than 5 minutes ago, so this run did nothing.' }
     }
 
     // Daily volume (owner decision 25 Nov 2026): about NEWS_DAILY_CAP (default 20) a day, spread evenly over the IST day.
@@ -134,9 +145,11 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
       .select({ n: count() })
       .from(articles)
       .where(and(eq(articles.isAiGenerated, true), eq(articles.status, 'published'), gte(articles.publishedAt, istDayStart(now))))
-    if (n >= allowed) {
-      return { ...out, message: `Daily pace: ${n} AI articles published today, ${allowed} of ${cap} allowed by now, so this run did nothing.` }
-    }
+    if (sinceLast < MIN_GAP_MS) blocked = 'An AI article was saved less than 20 minutes ago, so this run did nothing.'
+    else if (n >= allowed) blocked = `Daily pace: ${n} AI articles published today, ${allowed} of ${cap} allowed by now, so this run did nothing.`
+    // Breaking news may go beyond the normal volume, up to a hard ceiling for the day.
+    breakingRoom = n < cap + parseBreakingExtra(process.env.NEWS_BREAKING_EXTRA)
+    if (blocked && !breakingRoom) return { ...out, message: blocked }
   }
 
   // Which categories can be used: the category must exist and be active, and its author account must exist.
@@ -180,9 +193,11 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
 
   const byCategory = new Map<string, Story[]>()
   const alternatives = new Map<Story, string[]>()
+  const slugOf = new Map<Story, string>()
   for (const s of fresh) {
     const text = { title: s.lead.title, summary: s.lead.summary, publisherKeys: s.publishers.map((p) => p.key) }
     const slug = classifyStory(text)
+    slugOf.set(s, slug)
     byCategory.set(slug, [...(byCategory.get(slug) ?? []), s])
     alternatives.set(s, alternativeCategories(text))
   }
@@ -198,6 +213,82 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
   let triedNow = tried
   let modelAttempts = 0
   let looked = 0
+
+  type Target = { id: number; slug: string; name: string; authorId: string; authorName: string }
+
+  /**
+   * Writes and saves one story. Returns the outcome when an article (or a draft) was saved. Otherwise it was refused:
+   * `cheap` means no model call was spent (already covered, page unreadable), so the next story may be tried at once.
+   */
+  const tryStory = async (story: Story, slug: string, target: Target, breaking: boolean): Promise<{ outcome: ScheduleOutcome } | { cheap: boolean }> => {
+    const ref = toStoryRef(story)
+    const urls = ref.sources.map((x) => x.url)
+    const attempt = { title: ref.title, category: slug, result: '' }
+    out.attempts.push(attempt)
+    try {
+      const dupe = await db.select({ id: articles.id }).from(articles).where(inArray(articles.sourceUrl, urls)).limit(1)
+      if (dupe.length > 0) {
+        attempt.result = 'already covered'
+        return { cheap: true }
+      }
+      const built = await buildArticleFromStory(ref, {
+        categories: [{ id: target.id, slug: target.slug, name: target.name }],
+        fixedCategoryId: target.id,
+        wordLength,
+        faqCount: SCHEDULE_FAQS,
+        imageMode: 'licensed_first',
+        uploadedBy: target.authorId,
+      })
+      const saved = await saveBuiltArticle(built, target.authorId, autoPublish, {
+        strength: story.publisherCount + (story.trendMatch ? 1 : 0),
+        publishers: story.publisherCount,
+        ...(breaking ? { breaking: true } : {}),
+      })
+      attempt.result = saved.published ? 'published' : `draft (${saved.holdReason ?? 'auto-publish is off'})`
+      const lane = breaking ? ' through the breaking lane' : ''
+      return {
+        outcome: {
+          ...out,
+          status: saved.published ? 'published' : 'draft',
+          message: saved.published ? `Published${lane}${placementLabel(saved.placement)}.` : `Saved as a draft${lane}: ${saved.holdReason ?? 'auto-publish is off'}.`,
+          category: target.name,
+          author: target.authorName,
+          title: saved.title,
+          slug: saved.slug,
+        },
+      }
+    } catch (err) {
+      const unreadable = err instanceof SkipStory && err.kind === 'unreadable'
+      attempt.result = err instanceof SkipStory ? `skipped: ${err.message}` : `failed: ${err instanceof Error ? err.message : 'unknown error'}`
+      if (!(err instanceof SkipStory)) console.error('Scheduled article error:', urls[0], err)
+      failed = addFailed(failed, urls, Date.now())
+      await setSetting(NEWS_SCHEDULE_FAILED_KEY, JSON.stringify(failed)).catch(() => undefined)
+      return { cheap: unreadable }
+    }
+  }
+
+  // Breaking news first: no category rotation, no daily pace, a 5-minute gap instead of 20 (lib/news/breaking.ts).
+  if (breakingRoom) {
+    // A story the audit holds as a draft does not go out: the next breaking story is tried, and the draft is reported if none goes live.
+    let draft: ScheduleOutcome | null = null
+    for (const story of breakingCandidates(fresh, Date.now(), xBreakingMinPublishers(process.env.X_BREAKING_MIN_PUBLISHERS))) {
+      if (modelAttempts >= BREAKING_LANE_MAX_ATTEMPTS || looked >= BREAKING_LANE_MAX_TRIES || Date.now() - startedAt > START_BUDGET_MS) break
+      const slug = slugOf.get(story)
+      const target = slug ? usable.get(slug) : undefined
+      if (!slug || !target) continue
+      if (hasFailed(failed, story.publishers.map((p) => p.url))) continue
+      looked++
+      const r = await tryStory(story, slug, target, true)
+      if ('outcome' in r) {
+        if (r.outcome.status === 'published') return r.outcome
+        draft ??= r.outcome
+        modelAttempts++
+      } else if (!r.cheap) modelAttempts++
+    }
+    if (draft) return draft
+    // Nothing breaking went out; the normal flow only runs when its own guards allow it.
+    if (blocked) return { ...out, message: blocked }
+  }
 
   for (const slug of order) {
     const target = usable.get(slug)
@@ -215,45 +306,11 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
         return { ...out, message: 'No article passed the checks in this run (time or attempt limit reached).' }
       }
       looked++
-      const ref = toStoryRef(story)
-      const urls = ref.sources.map((x) => x.url)
-      const attempt = { title: ref.title, category: slug, result: '' }
-      out.attempts.push(attempt)
-      try {
-        const dupe = await db.select({ id: articles.id }).from(articles).where(inArray(articles.sourceUrl, urls)).limit(1)
-        if (dupe.length > 0) {
-          attempt.result = 'already covered'
-          continue
-        }
-        const built = await buildArticleFromStory(ref, {
-          categories: [{ id: target.id, slug: target.slug, name: target.name }],
-          fixedCategoryId: target.id,
-          wordLength,
-          faqCount: SCHEDULE_FAQS,
-          imageMode: 'licensed_first',
-          uploadedBy: target.authorId,
-        })
-        const saved = await saveBuiltArticle(built, target.authorId, autoPublish, { strength: story.publisherCount + (story.trendMatch ? 1 : 0), publishers: story.publisherCount })
-        attempt.result = saved.published ? 'published' : `draft (${saved.holdReason ?? 'auto-publish is off'})`
-        return {
-          ...out,
-          status: saved.published ? 'published' : 'draft',
-          message: saved.published ? `Published${placementLabel(saved.placement)}.` : `Saved as a draft: ${saved.holdReason ?? 'auto-publish is off'}.`,
-          category: target.name,
-          author: target.authorName,
-          title: saved.title,
-          slug: saved.slug,
-        }
-      } catch (err) {
-        const unreadable = err instanceof SkipStory && err.kind === 'unreadable'
-        attempt.result = err instanceof SkipStory ? `skipped: ${err.message}` : `failed: ${err instanceof Error ? err.message : 'unknown error'}`
-        if (!(err instanceof SkipStory)) console.error('Scheduled article error:', urls[0], err)
-        failed = addFailed(failed, urls, Date.now())
-        await setSetting(NEWS_SCHEDULE_FAILED_KEY, JSON.stringify(failed)).catch(() => undefined)
-        if (unreadable) continue // cheap: try the next story of this category
-        modelAttempts++
-        break // the model wrote it and the checks said no: move on to the next category
-      }
+      const r = await tryStory(story, slug, target, false)
+      if ('outcome' in r) return r.outcome
+      if (r.cheap) continue // cheap: try the next story of this category
+      modelAttempts++
+      break // the model wrote it and the checks said no: move on to the next category
     }
   }
   return { ...out, message: 'No fresh story matched a category that could be published, or none passed the checks.' }

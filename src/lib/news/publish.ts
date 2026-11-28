@@ -34,8 +34,9 @@ export async function saveBuiltArticle(
   /**
    * `strength`: how many trusted publishers carried the story (+1 if trending); leave out for an editor's own run.
    * `publishers`: how many trusted publishers carried it (falls back to the reports the article was written from).
+   * `breaking`: the scheduler picked this story through the breaking fast lane (lib/news/breaking.ts); X then tweets it at once.
    */
-  opts: { strength?: number; publishers?: number } = {},
+  opts: { strength?: number; publishers?: number; breaking?: boolean } = {},
 ): Promise<SavedArticle> {
   const baseSlug = slugFromTitle(built.title)
   const taken = await db.select({ id: articles.id }).from(articles).where(eq(articles.slug, baseSlug)).limit(1)
@@ -99,7 +100,7 @@ export async function saveBuiltArticle(
     revalidatePath(`/article/${article.slug}`)
     revalidatePath('/')
     // Social media (off unless the owner turned it on); never throws.
-    await shareArticle(article.id, { strength: opts.strength, publishers: opts.publishers })
+    await shareArticle(article.id, { strength: opts.strength, publishers: opts.publishers, breaking: opts.breaking })
   }
   revalidatePath('/admin/articles')
 
