@@ -147,7 +147,7 @@ export function xBreakingMinPublishers(raw: string | undefined): number {
  * Is this article breaking news for X? Yes when it carries the site's breaking flag (3+ publishers, urgent
  * headline, or an editor's tick), or, for a scheduled story, when `minPublishers` or more trusted publishers
  * carried it and its headline is urgent. `publishers` is undefined for an article an editor published by hand:
- * only the flag counts there. `urgent` comes from `isUrgentHeadline` (lib/news/placement.ts).
+ * only the flag counts there. `urgent` comes from `isRealBreaking` (lib/news/realBreaking.ts: the strict urgent words, no entertainment or sports story without something grave; the site's wider `isUrgentHeadline` is not used for X since 28 Nov 2026).
  */
 export function xBreakingVerdict(i: { flagged: boolean; publishers: number | undefined; urgent: boolean; minPublishers: number }): { breaking: boolean; reason: string } {
   if (i.flagged) return { breaking: true, reason: 'breaking news' }

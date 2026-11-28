@@ -9,7 +9,9 @@
  *   - a name must be in the reports, a number must be given by at least two of them, a strong claim word
  *     ("terror", "murder", "massacre" ...) must be used by at least two of them;
  *   - no outlet, agency or journalist is named, no run of 8 words is copied from a report;
- *   - no link, hashtag, emoji, exclamation mark, clickbait or capital-letter shouting.
+ *   - no link, emoji, exclamation mark, clickbait or capital-letter shouting, and no hashtag in the LINE itself: the code adds the
+ *     hashtags (owner 28 Nov 2026, "hashtag and keywords bhi lagana hai post pr") from keywords the writer names, each of which must be a
+ *     word of the reports (`cleanAlertTags`), plus the desk tag and #NewsEdition.
  * When nothing passes after one retry there is no alert (the article path still tweets later).
  * Pure and unit-tested: the model call is injected (see xalertRun.ts for the network and database part).
  */
@@ -209,8 +211,9 @@ export function buildAlertPrompt(input: AlertInput): { system: string; user: str
     'You write the first line of a breaking-news alert for NewsEdition, an Indian news site, on X (Twitter).',
     'You are given the headlines and short summaries that several independent news organisations have just published about the same event.',
     'Write ONE plain sentence that says what happened, using only what these reports state. Nothing from memory, no background, no guesses.',
-    'Return JSON: {"line": string}, or {"line": null} when the reports do not clearly describe the same event or do not agree enough for a safe one-line alert.',
-    `line: ${LINE_MIN} to ${LINE_MAX} characters, in your own words (never copy a headline), who/what/where first, plain active voice, same language as the headlines.`,
+    'Return JSON: {"line": string, "tags": string[]}, or {"line": null} when the reports do not clearly describe the same event or do not agree enough for a safe one-line alert.',
+    `line: ${LINE_MIN} to ${LINE_MAX} characters, in your own words (never copy a headline), who/what/where first, plain active voice, same language as the headlines. Put the place or person the event is about in the first words, so the keyword is seen at once.`,
+    'tags: 1 to 3 topic keywords of 1 to 3 words each (the place, person, organisation or topic the event is about), spelled exactly as the reports spell them, for example "Gaza City" or "Doctors Without Borders". Words only, no hashtag signs, no generic words (news, breaking, world, india), no outlet or agency names.',
     'Numbers: write numerals, and only a number that at least two reports give. If the reports differ on a number, leave the number out.',
     'Never name a newspaper, channel, agency, website or journalist, and never write "reportedly", "sources say" or "according to".',
     'Do not give a cause, blame, motive, suspect or "terror"/"murder"/"massacre" unless at least two reports use that word.',
@@ -230,14 +233,14 @@ export async function writeAlertLine(
   ask: (messages: Message[]) => Promise<string | null>,
   input: AlertInput,
   publisherNames: string[],
-): Promise<{ line: string | null; issues: string[] }> {
-  if (input.reports.length < 2) return { line: null, issues: ['An alert needs reports from at least two publishers.'] }
+): Promise<{ line: string | null; tags: string[]; issues: string[] }> {
+  if (input.reports.length < 2) return { line: null, tags: [], issues: ['An alert needs reports from at least two publishers.'] }
   const { system, user } = buildAlertPrompt(input)
   const messages: Message[] = [{ role: 'system', content: system }, { role: 'user', content: user }]
   let issues: string[] = []
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await ask(messages)
-    if (!raw) return { line: null, issues: ['The writer did not answer.'] }
+    if (!raw) return { line: null, tags: [], issues: ['The writer did not answer.'] }
     let parsed: unknown = null
     try {
       parsed = JSON.parse(raw)
@@ -245,27 +248,74 @@ export async function writeAlertLine(
       /* handled below */
     }
     const value = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>).line : undefined
-    if (value === null) return { line: null, issues: ['The writer found no safe line in the reports.'] }
+    if (value === null) return { line: null, tags: [], issues: ['The writer found no safe line in the reports.'] }
     const line = cleanLine(value)
     issues = line ? checkAlertLine(line, input, publisherNames) : ['The answer was not the JSON that was asked for.']
-    if (line && issues.length === 0) return { line, issues }
+    // Keywords never cost the alert: a bad one is dropped, the line stands.
+    if (line && issues.length === 0) return { line, tags: cleanAlertTags((parsed as Record<string, unknown>).tags, input, line, publisherNames), issues }
     messages.push({ role: 'assistant', content: raw }, { role: 'user', content: retryPrompt(issues) })
   }
-  return { line: null, issues }
+  return { line: null, tags: [], issues }
+}
+
+const wordsOf = (text: string): string[] => text.normalize('NFKC').toLowerCase().replace(/['’`]/g, '').split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+
+/**
+ * The keywords the writer named, kept only when they are safe to turn into hashtags: every word of a keyword is a word of the
+ * reports (no keyword from memory), no outlet or agency, and a strong claim word ("terror", "massacre" ...) only when the checked
+ * line uses it too. At most three; a keyword that fails is dropped, never fixed.
+ */
+export function cleanAlertTags(raw: unknown, input: AlertInput, line: string, publisherNames: string[]): string[] {
+  if (!Array.isArray(raw)) return []
+  const known = new Set(wordsOf(input.reports.map(reportText).join(' ')))
+  const lineLower = line.toLowerCase()
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const phrase = plain(item).replace(/^#+/, '').replace(/\s+/g, ' ').trim()
+    const words = wordsOf(phrase)
+    if (words.length === 0 || words.length > 3 || phrase.length > 40) continue
+    if (!words.every((w) => known.has(w))) continue
+    if (mentionedOutlets(phrase, publisherNames).length) continue
+    const strong = (phrase.match(STRONG_CLAIM_RE) ?? []).map((w) => w.toLowerCase())
+    if (strong.some((w) => !lineLower.includes(w))) continue
+    const key = words.join(' ')
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(phrase)
+    if (out.length >= 3) break
+  }
+  return out
 }
 
 // ── the tweets ──────────────────────────────────────────────────────────────
 
-/** The alert as posted. The prefix is added here, never by the model. */
-export function alertTweetText(line: string): string {
-  const text = `${ALERT_PREFIX_TEXT}${line}`
-  return weightedLength(text) <= X_LIMIT ? text : text.slice(0, X_LIMIT - 1).trimEnd()
+/**
+ * The alert as posted: the prefix is added here, never by the model, then the hashtags on a line of their own. When the tweet is
+ * too long the last hashtag goes first (the brand tag, then the second keyword ...); the line itself is never cut for a tag.
+ */
+export function alertTweetText(line: string, hashtags: string[] = []): string {
+  const base = `${ALERT_PREFIX_TEXT}${line}`
+  for (let n = hashtags.length; n > 0; n--) {
+    const text = `${base}\n\n${hashtags.slice(0, n).join(' ')}`
+    if (weightedLength(text) <= X_LIMIT) return text
+  }
+  return weightedLength(base) <= X_LIMIT ? base : base.slice(0, X_LIMIT - 1).trimEnd()
 }
 
-/** The reply that carries the article's link once the article is published: the checked fact line when there is one. */
-export function alertLinkText(fact: string | null | undefined, title: string, url: string): string {
+/**
+ * The reply that carries the article's link once the article is published: the checked fact line when there is one, the link, and
+ * the article's hashtags. Too long: fewer hashtags first, then no fact line, then no hashtags.
+ */
+export function alertLinkText(fact: string | null | undefined, title: string, url: string, hashtags: string[] = []): string {
   const lead = (fact ?? '').trim() || plain(title)
-  const body = `${lead}\n\nFull report: ${url}`
-  if (weightedLength(body) <= X_LIMIT) return body
+  const build = (head: string, n: number) => `${head}${head ? '\n\n' : ''}Full report: ${url}${n > 0 ? `\n\n${hashtags.slice(0, n).join(' ')}` : ''}`
+  for (const head of [lead, '']) {
+    for (let n = hashtags.length; n >= 0; n--) {
+      const body = build(head, n)
+      if (weightedLength(body) <= X_LIMIT) return body
+    }
+  }
   return `Full report: ${url}`
 }

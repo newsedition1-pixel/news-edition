@@ -7,6 +7,8 @@ import { discoverStories } from '@/lib/news/feeds'
 import { dropCoveredStories, recentOwnArticles } from '@/lib/news/fresh'
 import { findSameStory } from '@/lib/news/dedupe'
 import { breakingCandidates } from '@/lib/news/breaking'
+import { deskOf, isRealBreakingStory } from '@/lib/news/realBreaking'
+import { alertHashtags } from './hashtags'
 import { PUBLISHERS } from '@/lib/news/publishers'
 import type { Story } from '@/lib/news/cluster'
 import { loadChannelConfig, secretsOf, sendX } from './channels'
@@ -104,14 +106,16 @@ export async function runXAlerts(opts: { stories?: Story[]; now?: Date } = {}): 
 
     /** Writes the line for a story this run has reserved, and tweets it (preview: logs it). True when an alert went out. */
     const announce = async (key: string, base: AlertRecord, input: AlertInput, label: string): Promise<boolean> => {
-      const { line, issues } = await writeAlertLine((messages) => askJson(messages, 300), input, names)
+      const { line, tags, issues } = await writeAlertLine((messages) => askJson(messages, 300), input, names)
       if (!line) {
         const reason = issues.join(' ').slice(0, 300)
         await save(key, { ...base, status: 'skipped', reason })
         notes.push(`${label.slice(0, 60)}: no alert (${reason})`)
         return false
       }
-      const text = alertTweetText(line)
+      // Keywords as hashtags (owner 28 Nov 2026): the writer's checked keywords, the desk tag when there are fewer than two, #NewsEdition.
+      const desk = deskOf({ titles: input.reports.map((r) => r.title), summary: input.reports[0]?.summary })
+      const text = alertTweetText(line, alertHashtags(tags, desk))
       if (dry) {
         await save(key, { ...base, status: 'sent', text, reason: 'preview only' })
         notes.push(`(preview) ${text}`)
@@ -132,7 +136,8 @@ export async function runXAlerts(opts: { stories?: Story[]; now?: Date } = {}): 
     // 1. A story 2+ trusted publishers carry (their feeds).
     const stories = opts.stories ?? (await discoverStories('')).stories
     const minPublishers = xBreakingMinPublishers(process.env.X_BREAKING_MIN_PUBLISHERS)
-    const candidates = breakingCandidates(stories, now.getTime(), minPublishers, ALERT_MAX_AGE_HOURS)
+    // Only real breaking news: the strict urgent words, and no entertainment or sports story without something grave (lib/news/realBreaking.ts).
+    const candidates = breakingCandidates(stories, now.getTime(), minPublishers, ALERT_MAX_AGE_HOURS).filter(isRealBreakingStory)
     // A story we already wrote about is covered by its own article tweet.
     const open = candidates.length ? (await dropCoveredStories(candidates)).filter((s) => !isAlerted(records, s.items.map((i) => i.title), dry)) : []
     for (const story of open) {

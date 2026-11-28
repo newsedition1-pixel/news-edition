@@ -33,6 +33,16 @@ test('the search queries: handles, words, filters, always inside the limit, ever
   for (const h of POST_SOURCES_DEFAULT) assert.equal(all.filter((x) => new RegExp(`from:${h}[ )]`).test(x)).length, 1, h)
 })
 
+test('routine crime and court posts, bomb threats and entertainment or sports posts are not breaking', () => {
+  assert.equal(isBreakingPost('Man arrested for cheating investors of Rs 3 crore'), false)
+  assert.equal(isBreakingPost('Court reserves verdict in the land case'), false)
+  assert.equal(isBreakingPost('Bomb threat at Mumbai concert; singer thanks police'), false)
+  assert.equal(isBreakingPost('BREAKING: Bollywood actor announces new film with Netflix'), false)
+  assert.equal(isBreakingPost('JUST IN: India win the T20 series after a dead rubber'), false)
+  assert.equal(isBreakingPost('BREAKING: Veteran Bollywood actor dies at 82'), true)
+  assert.equal(isBreakingPost('Blast near cricket stadium before the T20 final'), true)
+})
+
 test('only a real breaking mark counts: "Alert" or "Urgent" alone do not', () => {
   assert.equal(isBreakingPost('News alert: Parliament session extended by one week'), true)
   assert.equal(isBreakingPost('JUST IN: Prime Minister to address the nation at 8 pm'), true)

@@ -11,7 +11,7 @@ import { findAlertFor, markAlertLinked } from './xalertRun'
 import { FEED_DAILY_CAP, feedDecision } from './policy'
 import { addEntry, alreadyShared, chosenToday, lastChosenAt, parseLog, scrub, type ChannelResult, type ShareEntry, type XNote } from './log'
 import { X_LINK_DAILY_CAP, X_POLL_DAILY_CAP, planBreaking, planX, xBreakingMinPublishers, xBreakingVerdict, xDailyCap, xDay, xModeOf, type XMode } from './xplan'
-import { isUrgentHeadline } from '@/lib/news/placement'
+import { isRealBreaking } from '@/lib/news/realBreaking'
 import { composeXPost, isPollSafe } from './xcopy'
 import { writeXDraft } from './xwriter'
 
@@ -108,13 +108,17 @@ export async function shareArticle(id: number, opts: { strength?: number; publis
     let linkReply: string | null = null
     const xMode = xModeOf(process.env.X_MODE)
     if (cfg.x && xMode !== 'legacy') {
+      // Real breaking news only (owner 28 Nov 2026, lib/news/realBreaking.ts): the strict urgent words, and no entertainment or sports
+      // story without something grave in it. The site's own flag counts for X only when the article is an editor's (no publisher count)
+      // or passes the same test; an editor's tick always counts.
+      const real = isRealBreaking({ titles: [article.title], summary: article.excerpt ?? undefined, categorySlug: article.categorySlug })
       const verdict =
-        opts.breaking && !loaded.breaking
+        opts.breaking && !loaded.breaking && real
           ? { breaking: true, reason: `breaking news: picked up at once, carried by ${opts.publishers ?? 'several'} publishers` }
           : xBreakingVerdict({
-              flagged: loaded.breaking,
+              flagged: loaded.breaking && (opts.publishers === undefined || real),
               publishers: opts.publishers,
-              urgent: isUrgentHeadline(article.title),
+              urgent: real,
               minPublishers: xBreakingMinPublishers(process.env.X_BREAKING_MIN_PUBLISHERS),
             })
       const plan =
@@ -151,7 +155,7 @@ export async function shareArticle(id: number, opts: { strength?: number; publis
         if (xMode === 'breaking' && !dry && plan.format === 'post') {
           alertUnder = await findAlertFor({ title: article.title, excerpt: article.excerpt, tags: article.tags }, now)
           if (alertUnder && plan.link) {
-            linkReply = alertLinkText(draft?.fact, article.title, article.url)
+            linkReply = alertLinkText(draft?.fact, article.title, article.url, composed.hashtags)
             xNote = { format: 'post', link: true, image: false, reason: `link under the breaking alert (${plan.reason})`, copy: composed.copy }
           } else if (alertUnder) {
             xSkip = 'the breaking alert already told this story and no link is allowed now'

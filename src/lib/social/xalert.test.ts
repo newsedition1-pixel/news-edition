@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ALERT_DAILY_CAP_DEFAULT, alertDailyCap, alertKeyOf, alertLinkText, alertsToday, alertTweetText, buildAlertPrompt, checkAlertLine,
+  ALERT_DAILY_CAP_DEFAULT, alertDailyCap, alertKeyOf, alertLinkText, alertsToday, alertTweetText, buildAlertPrompt, checkAlertLine, cleanAlertTags,
   isAlerted, matchAlertForArticle, mentionedOutlets, parseAlertRecord, writeAlertLine, type AlertInput, type AlertRecord,
 } from './xalert'
 import { weightedLength, X_LIMIT } from './compose'
@@ -96,11 +96,60 @@ test('the alert text carries the prefix and fits a tweet', () => {
   assert.ok(weightedLength(alertTweetText('x'.repeat(220))) <= X_LIMIT)
 })
 
+test('the alert text carries its hashtags on a line of their own, and drops the last one first when it is too long', () => {
+  assert.equal(alertTweetText(GOOD, ['#Kabul', '#KabulSchool', '#NewsEdition']), `BREAKING: ${GOOD}\n\n#Kabul #KabulSchool #NewsEdition`)
+  const long = 'y'.repeat(220)
+  const tight = alertTweetText(long, ['#Kabul', '#NewsEdition'])
+  assert.ok(weightedLength(tight) <= X_LIMIT)
+  // 10 + 220 + 2 + "#Kabul #NewsEdition" (19) = 251: both fit; with a long first tag only part of the list does.
+  assert.equal(tight, `BREAKING: ${long}\n\n#Kabul #NewsEdition`)
+  const cramped = alertTweetText('z'.repeat(220), ['#AVeryLongKeywordTagHere', '#AnotherLongKeywordTag', '#NewsEdition'])
+  assert.ok(weightedLength(cramped) <= X_LIMIT)
+  assert.ok(cramped.startsWith(`BREAKING: ${'z'.repeat(220)}`))
+  assert.equal(alertTweetText(GOOD, []), `BREAKING: ${GOOD}`)
+})
+
+test('the writer is asked for keywords, and its keywords come back checked', async () => {
+  const p = buildAlertPrompt(blast)
+  assert.match(p.system, /"tags": string\[\]/)
+  assert.match(p.system, /first words/)
+  const ok = JSON.stringify({ line: GOOD, tags: ['Kabul', 'Kabul school', 'NASA', '#Afghan', 'BBC News', 'Terror attack'] })
+  const out = await writeAlertLine(async () => ok, blast, NAMES)
+  assert.equal(out.line, GOOD)
+  // "NASA" is not in the reports, "BBC News" is an outlet, "Terror attack" is a strong word the line does not use.
+  assert.deepEqual(out.tags, ['Kabul', 'Kabul school', 'Afghan'])
+})
+
+test('a missing or broken tags field never costs the alert', async () => {
+  assert.deepEqual((await writeAlertLine(async () => JSON.stringify({ line: GOOD }), blast, NAMES)).tags, [])
+  assert.deepEqual((await writeAlertLine(async () => JSON.stringify({ line: GOOD, tags: 'Kabul' }), blast, NAMES)).tags, [])
+  assert.deepEqual((await writeAlertLine(async () => JSON.stringify({ line: GOOD, tags: [3, null, {}] }), blast, NAMES)).tags, [])
+})
+
+test('keywords: only words of the reports, at most three words each and three keywords, no duplicates, no outlets', () => {
+  assert.deepEqual(cleanAlertTags(['Kabul', 'kabul', 'Kabul school', 'Afghan capital', 'health ministry'], blast, GOOD, NAMES), ['Kabul', 'Kabul school', 'Afghan capital'])
+  assert.deepEqual(cleanAlertTags(['hospitals in Kabul received dozens'], blast, GOOD, NAMES), [])
+  assert.deepEqual(cleanAlertTags(['Scroll.in'], blast, GOOD, NAMES), [])
+  assert.deepEqual(cleanAlertTags(undefined, blast, GOOD, NAMES), [])
+})
+
 test('the link reply: fact line plus link, or the title plus link, always inside a tweet', () => {
   const url = 'https://newsedition.in/article/blast-at-kabul-school'
   assert.equal(alertLinkText('The health ministry said hospitals are treating dozens of children.', 'Blast at Kabul school', url), `The health ministry said hospitals are treating dozens of children.\n\nFull report: ${url}`)
   assert.equal(alertLinkText(null, 'Blast at Kabul school', url), `Blast at Kabul school\n\nFull report: ${url}`)
   assert.ok(weightedLength(alertLinkText('y'.repeat(400), 'Title', url)) <= X_LIMIT)
+})
+
+test('the link reply carries the article hashtags, fewer or none when the tweet would be too long', () => {
+  const url = 'https://newsedition.in/article/blast-at-kabul-school'
+  const fact = 'The health ministry said hospitals are treating dozens of children.'
+  assert.equal(alertLinkText(fact, 'Blast at Kabul school', url, ['#Kabul', '#NewsEdition']), `${fact}\n\nFull report: ${url}\n\n#Kabul #NewsEdition`)
+  assert.equal(alertLinkText(null, 'Blast at Kabul school', url, ['#Kabul']), `Blast at Kabul school\n\nFull report: ${url}\n\n#Kabul`)
+  const crowded = alertLinkText('y'.repeat(190), 'Title', url, ['#Kabul', '#NewsEdition'])
+  assert.ok(weightedLength(crowded) <= X_LIMIT)
+  assert.ok(crowded.includes(`Full report: ${url}`))
+  const huge = alertLinkText('y'.repeat(400), 'Title', url, ['#Kabul', '#NewsEdition'])
+  assert.equal(huge, `Full report: ${url}\n\n#Kabul #NewsEdition`)
 })
 
 const rec = (over: Partial<AlertRecord> = {}): AlertRecord => ({

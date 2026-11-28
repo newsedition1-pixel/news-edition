@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { BRAND_TAG, categoryHashtag, MAX_TAGS, pickHashtags, toHashtag, topicHashtags } from './hashtags'
+import { ALERT_MAX_TAGS, alertHashtags, BRAND_TAG, categoryHashtag, MAX_TAGS, pickHashtags, toHashtag, topicHashtags } from './hashtags'
 
 test('a phrase becomes one CamelCase tag', () => {
   assert.equal(toHashtag('Cauvery water dispute'), '#CauveryWaterDispute')
@@ -52,4 +52,13 @@ test('with no usable topic the desk tag stands in', () => {
   const bare = { tags: ['News', 'Latest'], categorySlug: 'business', categoryName: 'Business' }
   assert.deepEqual(pickHashtags('x', bare), ['#BusinessNews', '#NewsEdition'])
   assert.deepEqual(pickHashtags('instagram', bare), ['#BusinessNews', '#NewsEdition'])
+})
+
+test('alert hashtags: two keywords and the brand, or one keyword, the desk tag and the brand', () => {
+  assert.deepEqual(alertHashtags(['Gaza City', 'Doctors Without Borders'], 'world'), ['#GazaCity', '#DoctorsWithoutBorders', BRAND_TAG])
+  assert.deepEqual(alertHashtags(['Gaza City'], 'world'), ['#GazaCity', '#WorldNews', BRAND_TAG])
+  assert.deepEqual(alertHashtags([], 'world'), ['#WorldNews', BRAND_TAG])
+  assert.deepEqual(alertHashtags([], null), [BRAND_TAG])
+  assert.deepEqual(alertHashtags(['Kabul', 'kabul', 'News'], null), ['#Kabul', BRAND_TAG])
+  assert.ok(alertHashtags(['A one', 'B two', 'C three', 'D four'], 'india').length <= ALERT_MAX_TAGS)
 })
