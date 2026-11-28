@@ -67,3 +67,13 @@ test('NEWS_BREAKING_EXTRA: 0..24, default 8', () => {
   assert.equal(parseBreakingExtra('many'), BREAKING_EXTRA_DEFAULT)
   assert.equal(parseBreakingExtra('3.5'), BREAKING_EXTRA_DEFAULT)
 })
+
+test('the alert watches a shorter window: a story older than 2 hours is no alert, the fast lane still takes it', () => {
+  const old = story(['7 killed in blast at school in Afghanistan', 'Blast at Afghan school kills seven'], 3 * 60)
+  assert.equal(isBreakingStory(old, NOW), true)
+  assert.equal(isBreakingStory(old, NOW, 2, 2), false)
+  const fresh = story(['7 killed in blast at school in Afghanistan', 'Blast at Afghan school kills seven'], 30)
+  assert.equal(isBreakingStory(fresh, NOW, 2, 2), true)
+  assert.deepEqual(breakingCandidates([old, fresh], NOW, 2, 2), [fresh])
+  assert.deepEqual(breakingCandidates([old, fresh], NOW, 2).length, 2)
+})

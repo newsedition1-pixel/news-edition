@@ -112,8 +112,11 @@ function toStoryRef(s: Story): StoryRef {
  * publishers with an urgent headline is written before the category rotation, may use the gap after a recent article
  * (5 minutes instead of 20) and the room beyond the daily pace (up to NEWS_BREAKING_EXTRA more articles a day), and
  * is handed to X as breaking news. It still has to pass the fact check and the audit.
+ *
+ * `breakingOnly` is the breaking watch (`GET /api/cron/breaking`, called every few minutes): only the fast lane runs, the normal flow
+ * never does. `stories` hands over a discovery the caller has already made, so the feeds are read once per call.
  */
-export async function runScheduledArticle(opts: { force?: boolean } = {}): Promise<ScheduleOutcome> {
+export async function runScheduledArticle(opts: { force?: boolean; breakingOnly?: boolean; stories?: Story[] } = {}): Promise<ScheduleOutcome> {
   const startedAt = Date.now()
   const out: ScheduleOutcome = { status: 'skipped', message: '', notices: [], attempts: [] }
 
@@ -186,7 +189,7 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
   const tried = parseFailed(await getSetting(NEWS_SCHEDULE_TRIED_KEY), Date.now())
   const order = rotationOrder(lastActivity(last, tried))
 
-  const { stories } = await discoverStories('')
+  const stories = opts.stories ?? (await discoverStories('')).stories
   if (stories.length === 0) return { ...out, message: 'No stories could be loaded from the trusted publishers right now.' }
   const fresh = await dropCoveredStories(stories)
   if (fresh.length === 0) return { ...out, message: 'Every current story has already been covered.' }
@@ -286,6 +289,7 @@ export async function runScheduledArticle(opts: { force?: boolean } = {}): Promi
       } else if (!r.cheap) modelAttempts++
     }
     if (draft) return draft
+    if (opts.breakingOnly) return { ...out, message: 'No breaking story to write right now.' }
     // Nothing breaking went out; the normal flow only runs when its own guards allow it.
     if (blocked) return { ...out, message: blocked }
   }
