@@ -4,13 +4,14 @@ import { settings } from '@/lib/db/schema'
 import { and, eq, like, lt, or } from 'drizzle-orm'
 import { getSetting, getSocialMode, setSetting, SOCIAL_LOG_KEY } from '@/lib/settings'
 import { discoverStories } from '@/lib/news/feeds'
-import { dropCoveredStories, isCoveredByOwnArticle } from '@/lib/news/fresh'
+import { dropCoveredStories, recentOwnArticles } from '@/lib/news/fresh'
+import { findSameStory } from '@/lib/news/dedupe'
 import { breakingCandidates } from '@/lib/news/breaking'
 import { PUBLISHERS } from '@/lib/news/publishers'
 import type { Story } from '@/lib/news/cluster'
 import { loadChannelConfig, secretsOf, sendX } from './channels'
 import { searchSince } from './xread'
-import { parsePostState, POST_STATE_KEY, postCandidates, postQuery, postSources, readTooSoon } from './xposts'
+import { confirmPost, parsePostState, POST_STATE_KEY, postCandidates, postQuery, postSources, readTooSoon, stillPending, type FeedClaim, type PostCandidate } from './xposts'
 import { parseLog, scrub } from './log'
 import { askJson } from './xwriter'
 import { xBreakingMinPublishers, xDailyCap, xDay, xModeOf } from './xplan'
@@ -143,29 +144,54 @@ export async function runXAlerts(opts: { stories?: Story[]; now?: Date } = {}): 
       if (await announce(key, base, { reports: story.items.map((i) => ({ title: i.title, summary: i.summary })) }, story.lead.title)) sent++
     }
 
-    // 2. One breaking post of an official news organisation on X (xposts.ts): the story need not be on a website yet.
-    if (sent < room && (process.env.X_ALERT_POSTS ?? '').trim().toLowerCase() !== 'off') {
+    // 2. A breaking post of an official news organisation on X (xposts.ts). It is a claim until a SECOND organisation says the same:
+    // another account's post or a trusted publisher's story. Unconfirmed posts wait up to POST_MAX_AGE_MIN minutes.
+    if ((process.env.X_ALERT_POSTS ?? '').trim().toLowerCase() !== 'off') {
       const handles = postSources(process.env.X_BREAKING_SOURCES)
       const state = parsePostState(await getSetting(POST_STATE_KEY))
+      let sinceId = state.sinceId
+      let readAt = state.readAt
+      let fresh: PostCandidate[] = []
       if (!readTooSoon(state, now)) {
         const read = await searchSince(xKeys, deps, postQuery(handles), state.sinceId)
-        if (typeof read === 'string') {
-          notes.push(`X post read failed: ${scrub(read, secrets)}`)
-          await setSetting(POST_STATE_KEY, JSON.stringify({ ...state, readAt: now.toISOString() }))
-        } else {
-          await setSetting(POST_STATE_KEY, JSON.stringify({ sinceId: read.newestId ?? state.sinceId, readAt: now.toISOString() }))
-          for (const post of postCandidates(read.tweets, now, handles)) {
-            if (sent >= room) break
-            const titles = [post.text]
-            if (isAlerted(records, titles, dry) || (await isCoveredByOwnArticle(titles))) continue
-            const key = alertKeyOf(post.text, dry)
-            const base: AlertRecord = { at: now.toISOString(), dry, status: 'writing', titles, source: 'post', postId: `${post.username}/${post.id}` }
-            if (!(await reserve(key, base))) continue
-            records.push(base)
-            if (await announce(key, base, { reports: [{ title: post.text, summary: '' }], single: true }, post.text)) sent++
-          }
+        readAt = now.toISOString()
+        if (typeof read === 'string') notes.push(`X post read failed: ${scrub(read, secrets)}`)
+        else {
+          sinceId = read.newestId ?? sinceId
+          fresh = postCandidates(read.tweets, now, handles)
         }
       }
+      const known = new Set(fresh.map((p) => p.id))
+      const waiting = [...fresh, ...stillPending(state.pending, now).filter((p) => !known.has(p.id))]
+      const stillWaiting: PostCandidate[] = []
+      if (waiting.length) {
+        const feed: FeedClaim[] = stories
+          .flatMap((s) => s.items)
+          .filter((i) => i.publishedAt && now.getTime() - new Date(i.publishedAt).getTime() <= ALERT_MAX_AGE_HOURS * 3_600_000)
+          .map((i) => ({ publisherKey: i.publisherKey, title: i.title, summary: i.summary }))
+        let own: Awaited<ReturnType<typeof recentOwnArticles>> | null = null
+        for (const post of waiting) {
+          if (sent >= room) {
+            stillWaiting.push(post)
+            continue
+          }
+          if (isAlerted(records, [post.text], dry)) continue
+          own ??= await recentOwnArticles()
+          if (findSameStory({ titles: [post.text] }, own)) continue
+          const evidence = confirmPost(post, waiting, feed)
+          if (!evidence) {
+            stillWaiting.push(post)
+            continue
+          }
+          const key = alertKeyOf(post.text, dry)
+          const base: AlertRecord = { at: now.toISOString(), dry, status: 'writing', titles: evidence.map((e) => e.title), source: 'post', postId: `${post.username}/${post.id}` }
+          if (!(await reserve(key, base))) continue
+          records.push(base)
+          if (await announce(key, base, { reports: evidence.map((e) => ({ title: e.title, summary: e.summary })) }, post.text)) sent++
+        }
+      }
+      await setSetting(POST_STATE_KEY, JSON.stringify({ ...(sinceId ? { sinceId } : {}), ...(readAt ? { readAt } : {}), pending: stillPending(stillWaiting, now) }))
+      if (stillWaiting.length) notes.push(`${stillWaiting.length} post(s) wait for a second source`)
     }
     return { ran: true, message: notes.length ? notes.join(' | ') : 'Nothing to announce.' }
   } catch (err) {

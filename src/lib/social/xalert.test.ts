@@ -158,35 +158,3 @@ test('X_ALERT_DAILY_CAP: 0..30, default 10', () => {
   assert.equal(alertDailyCap('31'), ALERT_DAILY_CAP_DEFAULT)
   assert.equal(alertDailyCap('lots'), ALERT_DAILY_CAP_DEFAULT)
 })
-
-// ── one official post (xposts.ts) ───────────────────────────────────────────
-
-const post: AlertInput = { single: true, reports: [{ title: 'Explosion near Red Fort in Delhi, 8 injured, fire tenders at the spot', summary: '' }] }
-
-test('single post: the line may use what the post says, a shorter line is fine', () => {
-  assert.deepEqual(checkAlertLine('Eight people were hurt in an explosion near the Red Fort in Delhi.', post, NAMES), [])
-  assert.deepEqual(checkAlertLine('8 injured in a blast near Red Fort, Delhi.', post, NAMES), [])
-})
-
-test('single post: a number, a name or a strong word that is not in the post is refused', () => {
-  assert.ok(checkAlertLine('Twelve people were hurt in an explosion near the Red Fort in Delhi.', post, NAMES).some((i) => /numbers/.test(i)))
-  assert.ok(checkAlertLine('Eight people were hurt in an explosion near the Red Fort in Delhi, said Delhi Police Commissioner Rao.', post, NAMES).some((i) => /not in the reports/.test(i)))
-  assert.ok(checkAlertLine('A terror attack near the Red Fort in Delhi left eight people injured today.', post, NAMES).some((i) => /strong words/.test(i)))
-})
-
-test('single post: still no outlet, no copied run, no clickbait', () => {
-  assert.ok(checkAlertLine('Reuters says eight people were hurt in an explosion near the Red Fort in Delhi.', post, NAMES).some((i) => /outlet/.test(i)))
-  assert.ok(checkAlertLine('Explosion near Red Fort in Delhi, 8 injured, fire tenders at the spot say officials.', post, NAMES).some((i) => /copies a run/.test(i)))
-  assert.ok(checkAlertLine('Shocking explosion near the Red Fort in Delhi leaves eight people hurt.', post, NAMES).some((i) => /clickbait/.test(i)))
-})
-
-test('single post: one report is enough only in single mode, and the prompt says so', async () => {
-  const bad = await writeAlertLine(async () => JSON.stringify({ line: 'Eight people were hurt in an explosion near the Red Fort in Delhi.' }), { reports: post.reports }, NAMES)
-  assert.equal(bad.line, null)
-  const ok = await writeAlertLine(async () => JSON.stringify({ line: 'Eight people were hurt in an explosion near the Red Fort in Delhi.' }), post, NAMES)
-  assert.equal(ok.line, 'Eight people were hurt in an explosion near the Red Fort in Delhi.')
-  const p = buildAlertPrompt(post)
-  assert.match(p.system, /ONE breaking post/)
-  assert.match(p.user, /^Post: Explosion near Red Fort/)
-  assert.doesNotMatch(buildAlertPrompt(blast).system, /ONE breaking post/)
-})

@@ -1,15 +1,18 @@
 /**
- * Breaking posts of official news organisations on X as a second way to start an alert (owner decision 28 Nov 2026,
- * "jo news website pr break ho wahi pick krna jaroori nhi ... x par official news organisation se break ho use bhi pick
- * krna hai, chahe sirf ek line ki headline ho").
+ * Breaking posts of official news organisations on X as a second way to start an alert (owner decision 28 Nov 2026, "jo news website
+ * pr break ho wahi pick krna jaroori nhi, x par official news organisation se break ho use bhi pick krna hai", then "2 sources se check
+ * krk post krna").
  *
- * The feeds path (xalert.ts) needs 2+ publishers to agree. Here ONE post of an allow-listed official account is enough, so the
- * safeguards move to the account list and the wording: only handles in X_BREAKING_SOURCES (default: the wire agencies and the big
- * channels), only original posts (no replies, retweets, quotes), only a breaking marker or an urgent headline, not older than
- * POST_MAX_AGE_MIN minutes, and the line is rewritten from that one post alone: every name, number and strong word must already be
- * in the post, no outlet is named, no run of 8 words is copied. Pure and unit-tested; the X read is in xread.ts, the run in xalertRun.ts.
+ * A post never goes out on its own. It is a CLAIM until a second, independent source says the same thing: another allow-listed account's
+ * post about the same event, or a story in the feeds of the trusted publishers (lib/news/feeds.ts). "Independent" means a different
+ * organisation: an account and the website of the same outlet (`ndtv` and NDTV, `the_hindu` and The Hindu) count once. An unconfirmed post
+ * waits (`pending` in the cursor state) for POST_MAX_AGE_MIN minutes and is then dropped. Once two sources agree, the alert line is
+ * written from both and checked exactly as a feeds alert is (xalert.ts: names in the reports, numbers and strong words given by both).
+ * Other safeguards: only handles in X_BREAKING_SOURCES, only original posts (no replies, retweets, quotes), a breaking marker or an
+ * urgent headline, not older than POST_MAX_AGE_MIN. Pure and unit-tested; the X read is in xread.ts, the run in xalertRun.ts.
  */
 import { isUrgentHeadline } from '../news/placement'
+import { findSameStory } from '../news/dedupe'
 import type { DeskTweet } from './xreplies'
 
 export const POST_SOURCES_DEFAULT = ['ANI', 'PTI_News', 'Reuters', 'AP', 'AFP', 'BBCBreaking', 'AJEnglish', 'ndtv', 'the_hindu', 'htTweets']
@@ -99,22 +102,102 @@ export interface PostState {
   /** Newest post id seen: the next read asks only for newer posts, so nothing is billed twice. */
   sinceId?: string
   readAt?: string
+  /** Posts that wait for a second source (see confirmPost). */
+  pending: PostCandidate[]
 }
 
+export const PENDING_MAX = 20
+
 export function parsePostState(raw: string | null): PostState {
-  if (!raw) return {}
+  const empty: PostState = { pending: [] }
+  if (!raw) return empty
   try {
-    const v = JSON.parse(raw) as PostState | null
-    if (!v || typeof v !== 'object') return {}
-    return { ...(typeof v.sinceId === 'string' && /^\d+$/.test(v.sinceId) ? { sinceId: v.sinceId } : {}), ...(typeof v.readAt === 'string' ? { readAt: v.readAt } : {}) }
+    const v = JSON.parse(raw) as Partial<PostState> | null
+    if (!v || typeof v !== 'object') return empty
+    const pending = (Array.isArray(v.pending) ? v.pending : [])
+      .filter((p): p is PostCandidate => !!p && typeof p.id === 'string' && typeof p.username === 'string' && typeof p.text === 'string' && typeof p.createdAt === 'string')
+      .slice(0, PENDING_MAX)
+    return { ...(typeof v.sinceId === 'string' && /^\d+$/.test(v.sinceId) ? { sinceId: v.sinceId } : {}), ...(typeof v.readAt === 'string' ? { readAt: v.readAt } : {}), pending }
   } catch {
-    return {}
+    return empty
   }
 }
 
 /** True when the last read was so recent that this call should not read again. */
-export function readTooSoon(state: PostState, now: Date): boolean {
+export function readTooSoon(state: Pick<PostState, 'readAt'>, now: Date): boolean {
   if (!state.readAt) return false
   const t = new Date(state.readAt).getTime()
   return Number.isFinite(t) && now.getTime() - t < POST_READ_GAP_MS
+}
+
+// ── the second source ───────────────────────────────────────────────────────
+
+/** Account -> organisation (the publisher key where there is one), so an outlet's account and its website count as one source. */
+const HANDLE_ORG: Record<string, string> = {
+  pti_news: 'pti', bbcbreaking: 'bbc', bbcworld: 'bbc', ajenglish: 'al-jazeera', aljazeera: 'al-jazeera', the_hindu: 'the-hindu', thehindu: 'the-hindu',
+  httweets: 'hindustan-times', indianexpress: 'indian-express', indiatoday: 'india-today', timesofindia: 'times-of-india', toi_india: 'times-of-india',
+  business_standard: 'business-standard', bsindia: 'business-standard', news18india: 'news18', scroll_in: 'scroll',
+}
+
+export function orgOfHandle(handle: string): string {
+  const h = handle.toLowerCase()
+  return HANDLE_ORG[h] ?? h.replace(/_/g, '')
+}
+
+/** The Hindu BusinessLine is The Hindu; every other publisher key stands for itself. */
+export function orgOfPublisher(key: string): string {
+  return key === 'the-hindu-businessline' ? 'the-hindu' : key
+}
+
+/** One report that says something happened: a post of an official account or a trusted publisher's story. */
+export interface Evidence {
+  org: string
+  title: string
+  summary: string
+  kind: 'post' | 'feed'
+}
+
+export interface FeedClaim {
+  publisherKey: string
+  title: string
+  summary: string
+}
+
+/** Two headlines are about the same event (the same rule that stops us writing a story twice). */
+export function sameEvent(a: string, b: string): boolean {
+  return findSameStory({ titles: [a] }, [{ title: b }]) !== null
+}
+
+/**
+ * The independent sources that say the same thing as `post`, the post first, or null when no second organisation confirms it yet.
+ * `others` are the other waiting or new posts, `feed` the headlines of the trusted publishers' feeds. At most one report per organisation.
+ */
+export function confirmPost(post: PostCandidate, others: PostCandidate[], feed: FeedClaim[]): Evidence[] | null {
+  const own = orgOfHandle(post.username)
+  const evidence: Evidence[] = [{ org: own, title: post.text, summary: '', kind: 'post' }]
+  const orgs = new Set([own])
+  for (const o of others) {
+    const org = orgOfHandle(o.username)
+    if (o.id === post.id || orgs.has(org) || !sameEvent(post.text, o.text)) continue
+    orgs.add(org)
+    evidence.push({ org, title: o.text, summary: '', kind: 'post' })
+  }
+  for (const f of feed) {
+    const org = orgOfPublisher(f.publisherKey)
+    if (orgs.has(org) || !sameEvent(post.text, f.title)) continue
+    orgs.add(org)
+    evidence.push({ org, title: f.title, summary: f.summary, kind: 'feed' })
+  }
+  return orgs.size >= 2 ? evidence : null
+}
+
+/** What stays in the waiting list: posts nobody has confirmed yet and that are still fresh, newest first. */
+export function stillPending(posts: PostCandidate[], now: Date, maxAgeMin = POST_MAX_AGE_MIN): PostCandidate[] {
+  return posts
+    .filter((p) => {
+      const age = now.getTime() - new Date(p.createdAt).getTime()
+      return Number.isFinite(age) && age <= maxAgeMin * 60_000
+    })
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, PENDING_MAX)
 }
