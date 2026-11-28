@@ -11,7 +11,7 @@
  * Other safeguards: only handles in X_BREAKING_SOURCES, only original posts (no replies, retweets, quotes), a breaking marker or an
  * urgent headline, not older than POST_MAX_AGE_MIN. Pure and unit-tested; the X read is in xread.ts, the run in xalertRun.ts.
  */
-import { isUrgentHeadline } from '../news/placement'
+import { isQuietStory, isRealBreaking } from '../news/realBreaking'
 import { findSameStory } from '../news/dedupe'
 import type { DeskTweet } from './xreplies'
 
@@ -76,10 +76,16 @@ export function cleanPostText(raw: string): string {
   return t.replace(/\s+/g, ' ').trim()
 }
 
-/** Marked as breaking by the account itself, or an urgent headline (a death, attack, disaster, arrest, verdict ...). */
+/**
+ * Marked as breaking by the account itself, or a real urgent headline (a death, attack, disaster, resignation ...: the strict list of
+ * `lib/news/realBreaking.ts`, so routine "arrested" / "verdict" / bomb-threat posts do not count). Either way an entertainment or
+ * sports post needs something grave in it (28 Nov 2026: only real breaking news goes out as an alert).
+ */
 export function isBreakingPost(raw: string): boolean {
   const flat = raw.replace(EMOJI_RE, ' ').replace(/https?:\/\/\S+/g, ' ')
-  return MARKER_RE.test(flat) || isUrgentHeadline(cleanPostText(raw))
+  const text = cleanPostText(raw)
+  if (MARKER_RE.test(flat)) return !isQuietStory({ titles: [text] })
+  return isRealBreaking({ titles: [text] })
 }
 
 export interface PostCandidate {

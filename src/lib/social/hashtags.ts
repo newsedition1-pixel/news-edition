@@ -106,3 +106,30 @@ export function pickHashtags(channel: FeedChannel, src: TagSource): string[] {
   }
   return out
 }
+
+/** Most tags on a breaking alert: two topics (or one topic and the desk tag) and the brand. */
+export const ALERT_MAX_TAGS = 3
+
+/**
+ * The hashtags of a breaking alert. `topics` are the keywords the writer named (already checked against the reports, see
+ * `cleanAlertTags` in xalert.ts): the first two become tags. With fewer than two the desk tag fills in; the brand tag comes last,
+ * so it is the first to go when the tweet is too long.
+ */
+export function alertHashtags(topics: string[], categorySlug: string | null, categoryName: string | null = null): string[] {
+  const wanted = topicHashtags(topics).slice(0, 2)
+  if (wanted.length < 2) {
+    const desk = categoryHashtag(categorySlug, categoryName)
+    if (desk) wanted.push(desk)
+  }
+  wanted.push(BRAND_TAG)
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const h of wanted) {
+    const key = h.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(h)
+    if (out.length >= ALERT_MAX_TAGS) break
+  }
+  return out
+}
