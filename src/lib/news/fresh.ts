@@ -30,3 +30,13 @@ export async function dropCoveredStories(stories: Story[]): Promise<Story[]> {
       !findSameStory({ titles: s.items.map((i) => i.title) }, lastTwoDays)
   )
 }
+
+/** Our articles of the last 48 hours (headline, excerpt, tags), for `findSameStory`. One query: the X alerts compare many posts against it. */
+export async function recentOwnArticles(): Promise<{ title: string; excerpt: string | null; tags: string[] | null }[]> {
+  return db
+    .select({ title: articles.title, excerpt: articles.excerpt, tags: articles.tags })
+    .from(articles)
+    .where(gte(articles.createdAt, new Date(Date.now() - SAME_STORY_WINDOW_MS)))
+    .orderBy(desc(articles.createdAt))
+    .limit(300)
+}

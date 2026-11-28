@@ -5,6 +5,9 @@ import { eq } from 'drizzle-orm'
 import { getSetting, getSocialMode, setSetting, SOCIAL_LOG_KEY, type SocialMode } from '@/lib/settings'
 import { composeAll, webhookPayload, type ArticleForSocial } from './compose'
 import { configuredChannels, loadChannelConfig, secretsOf, sendFacebook, sendInstagram, sendTelegram, sendWebhook, sendX, type ChannelName, type SendResult, type XLinkMode } from './channels'
+import { postReply } from './xread'
+import { alertLinkText } from './xalert'
+import { findAlertFor, markAlertLinked } from './xalertRun'
 import { FEED_DAILY_CAP, feedDecision } from './policy'
 import { addEntry, alreadyShared, chosenToday, lastChosenAt, parseLog, scrub, type ChannelResult, type ShareEntry, type XNote } from './log'
 import { X_LINK_DAILY_CAP, X_POLL_DAILY_CAP, planBreaking, planX, xBreakingMinPublishers, xBreakingVerdict, xDailyCap, xDay, xModeOf, type XMode } from './xplan'
@@ -99,6 +102,10 @@ export async function shareArticle(id: number, opts: { strength?: number; publis
     let xPost = set.x
     let xNote: XNote | undefined
     let xSkip: string | null = null
+    // Alert first, link after (owner decision 28 Nov 2026): when the breaking alert (lib/social/xalert.ts) already told this story on X,
+    // the article's link goes under it as a reply instead of a second tweet about the same event.
+    let alertUnder: { key: string; tweetId: string } | null = null
+    let linkReply: string | null = null
     const xMode = xModeOf(process.env.X_MODE)
     if (cfg.x && xMode !== 'legacy') {
       const verdict =
@@ -141,6 +148,16 @@ export async function shareArticle(id: number, opts: { strength?: number; publis
         const composed = composeXPost({ article, draft, plan: { format: plan.format, link: plan.link, image: plan.image } })
         xPost = composed
         xNote = { format: plan.format, link: plan.link, image: !!composed.imageUrl, reason: plan.reason, copy: composed.copy }
+        if (xMode === 'breaking' && !dry && plan.format === 'post') {
+          alertUnder = await findAlertFor({ title: article.title, excerpt: article.excerpt, tags: article.tags }, now)
+          if (alertUnder && plan.link) {
+            linkReply = alertLinkText(draft?.fact, article.title, article.url)
+            xNote = { format: 'post', link: true, image: false, reason: `link under the breaking alert (${plan.reason})`, copy: composed.copy }
+          } else if (alertUnder) {
+            xSkip = 'the breaking alert already told this story and no link is allowed now'
+            xNote = { format: 'skip', link: false, image: false, reason: xSkip }
+          }
+        }
       }
     }
 
@@ -150,7 +167,22 @@ export async function shareArticle(id: number, opts: { strength?: number; publis
     // What each configured platform would do. `skip` is a reason to send nothing there.
     const plans: { name: ChannelName; skip: string | null; send: () => Promise<SendResult> }[] = []
     if (cfg.telegram) plans.push({ name: 'telegram', skip: null, send: () => sendTelegram(cfg.telegram!, set.telegram, deps) })
-    if (cfg.x) plans.push({ name: 'x', skip: xSkip ? `X: ${xSkip}` : null, send: () => sendX(cfg.x!, xPost, deps) })
+    const sendXPost = async (): Promise<SendResult> => {
+      const under = alertUnder
+      const text = linkReply
+      if (under && text) {
+        const reply = await postReply(cfg.x!, deps, text, under.tweetId)
+        if (reply.ok) {
+          await markAlertLinked(under.key, reply.ref ?? 'reply').catch(() => undefined)
+          return { ...reply, note: 'link posted under the breaking alert' }
+        }
+        // The reply was refused (the alert was deleted, say): the article gets its own tweet, as it would without an alert.
+        const own = await sendX(cfg.x!, xPost, deps)
+        return own.ok ? { ...own, note: `reply under the alert failed (${reply.error ?? 'unknown'}); posted on its own` } : own
+      }
+      return sendX(cfg.x!, xPost, deps)
+    }
+    if (cfg.x) plans.push({ name: 'x', skip: xSkip ? `X: ${xSkip}` : null, send: sendXPost })
     if (cfg.facebook) plans.push({ name: 'facebook', skip: decision.top ? null : notTop, send: () => sendFacebook(cfg, set.facebook, deps) })
     if (cfg.instagram) {
       const skip = !decision.top ? notTop : set.aiCover ? 'the cover is an AI illustration' : !set.instagram.imageUrl ? 'no cover image' : null

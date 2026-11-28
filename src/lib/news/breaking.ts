@@ -35,19 +35,22 @@ export function parseBreakingExtra(raw: string | undefined): number {
   return Number.isInteger(n) && n >= 0 && n <= BREAKING_EXTRA_MAX ? n : BREAKING_EXTRA_DEFAULT
 }
 
-/** Is this story breaking news right now? Several publishers, an urgent headline, fresh, and not an explainer. */
-export function isBreakingStory(story: Story, now: number, minPublishers = BREAKING_LANE_MIN_PUBLISHERS): boolean {
+/**
+ * Is this story breaking news right now? Several publishers, an urgent headline, fresh (`maxAgeHours`, 6 by default;
+ * the X alert uses 2), and not an explainer.
+ */
+export function isBreakingStory(story: Story, now: number, minPublishers = BREAKING_LANE_MIN_PUBLISHERS, maxAgeHours = BREAKING_LANE_MAX_AGE_HOURS): boolean {
   if (story.publisherCount < minPublishers) return false
   if (story.isExplainer) return false
   if (!story.newestAt) return false
   const ageMs = now - new Date(story.newestAt).getTime()
-  if (!Number.isFinite(ageMs) || ageMs > BREAKING_LANE_MAX_AGE_HOURS * 3_600_000) return false
+  if (!Number.isFinite(ageMs) || ageMs > maxAgeHours * 3_600_000) return false
   return story.items.some((i) => isUrgentHeadline(i.title))
 }
 
 /** The breaking stories of a discovery run, the most widely carried first, then the newest. */
-export function breakingCandidates(stories: Story[], now: number, minPublishers = BREAKING_LANE_MIN_PUBLISHERS): Story[] {
+export function breakingCandidates(stories: Story[], now: number, minPublishers = BREAKING_LANE_MIN_PUBLISHERS, maxAgeHours = BREAKING_LANE_MAX_AGE_HOURS): Story[] {
   return stories
-    .filter((s) => isBreakingStory(s, now, minPublishers))
+    .filter((s) => isBreakingStory(s, now, minPublishers, maxAgeHours))
     .sort((a, b) => b.publisherCount - a.publisherCount || (b.newestAt ?? '').localeCompare(a.newestAt ?? '') || b.score - a.score)
 }

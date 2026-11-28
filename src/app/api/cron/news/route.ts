@@ -2,6 +2,7 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { runScheduledArticle } from '@/lib/news/scheduler'
 import { authoriseCron } from '@/lib/news/cronGate'
 import { runXInbox } from '@/lib/social/xinbox'
+import { runXAlerts } from '@/lib/social/xalertRun'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,6 +29,12 @@ export async function GET(request: NextRequest) {
   after(async () => {
     const inbox = await runXInbox()
     if (inbox.ran) console.log('X inbox:', inbox.message)
+  })
+  // The X breaking alert (lib/social/xalertRun.ts) also rides on this call, so it works at the 30-minute pace even before an outside
+  // cron calls /api/cron/breaking every few minutes. It never throws and cannot alert the same story twice.
+  after(async () => {
+    const alerts = await runXAlerts()
+    if (alerts.ran) console.log('X alerts:', alerts.message)
   })
   // `?async=1`: answer at once (202) and do the work after the response. Outside cron services give up on a
   // request after 30 seconds, and one article takes two minutes or more; the work still runs to the end.
