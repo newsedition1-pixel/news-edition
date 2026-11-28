@@ -15,8 +15,12 @@ import { isUrgentHeadline } from '../news/placement'
 import { findSameStory } from '../news/dedupe'
 import type { DeskTweet } from './xreplies'
 
-export const POST_SOURCES_DEFAULT = ['ANI', 'PTI_News', 'Reuters', 'AP', 'AFP', 'BBCBreaking', 'AJEnglish', 'ndtv', 'the_hindu', 'htTweets']
-export const POST_SOURCES_MAX = 12
+/** Indian newsrooms first, then the wire services and big channels of the world (owner: "world ki official news organisation k x account k bhi"). A wrong handle just finds nothing. */
+export const POST_SOURCES_DEFAULT = [
+  'ANI', 'PTI_News', 'ndtv', 'the_hindu', 'htTweets', 'IndianExpress', 'IndiaToday',
+  'Reuters', 'AP', 'AFP', 'BBCBreaking', 'BBCWorld', 'AJEnglish', 'cnnbrk', 'SkyNews', 'DWNews', 'France24_en', 'business',
+]
+export const POST_SOURCES_MAX = 20
 /** A post older than this is not "first" any more. */
 export const POST_MAX_AGE_MIN = 45
 /** The next read waits at least this long, so two overlapping cron calls read once. */
@@ -44,15 +48,22 @@ export function postSources(raw: string | undefined): string[] {
 const SEARCH_WORDS = ['BREAKING', '"JUST IN"', 'FLASH', 'killed', 'dead', 'dies', 'blast', 'explosion', 'attack', 'earthquake', 'crash', 'shot', 'missile', 'resigns', 'arrested']
 const SEARCH_FILTERS = '-is:retweet -is:reply -is:quote lang:en'
 
-export function postQuery(handles: string[]): string {
+/** One or more searches that together cover every handle, each inside X's query limit (18 handles need two). */
+export function postQueries(handles: string[]): string[] {
   const words = `(${SEARCH_WORDS.join(' OR ')})`
   const build = (hs: string[]) => `(${hs.map((h) => `from:${h}`).join(' OR ')}) ${words} ${SEARCH_FILTERS}`
-  let hs = handles.slice()
-  while (hs.length > 1 && build(hs).length > QUERY_MAX) hs = hs.slice(0, -1)
-  return build(hs)
+  const queries: string[] = []
+  let rest = handles.slice()
+  while (rest.length > 0) {
+    let take = rest.length
+    while (take > 1 && build(rest.slice(0, take)).length > QUERY_MAX) take--
+    queries.push(build(rest.slice(0, take)))
+    rest = rest.slice(take)
+  }
+  return queries
 }
 
-const MARKER_RE = /^[\W_]*(breaking|just in|flash|alert|developing|urgent)\b/i
+const MARKER_RE = /^[\W_]*(breaking( news)?|just in|flash|news alert|developing)\b/i
 const EMOJI_RE = /[\p{Extended_Pictographic}‍️]/gu
 const ATTRIBUTION_RE = /\s*[\(\[]\s*(ANI|PTI|IANS|AFP|AP|Reuters|Bloomberg|UNI)\s*[\)\]]\s*$|\s+[-–—|]\s*(ANI|PTI|IANS|AFP|AP|Reuters|BBC|Al Jazeera)\s*$/i
 
@@ -60,7 +71,7 @@ const ATTRIBUTION_RE = /\s*[\(\[]\s*(ANI|PTI|IANS|AFP|AP|Reuters|Bloomberg|UNI)\
 export function cleanPostText(raw: string): string {
   let t = raw.replace(/https?:\/\/\S+/g, ' ').replace(/(^|\s)@\w+/g, ' ').replace(/#(\w+)/g, '$1').replace(EMOJI_RE, ' ')
   t = t.replace(/\s+/g, ' ').trim()
-  t = t.replace(/^[\W_]*(breaking( news)?|just in|flash|alert|developing|urgent)\s*[:|\-–—!]*\s*/i, '')
+  t = t.replace(/^[\W_]*(breaking( news)?|just in|flash|news alert|developing)\s*[:|\-–—!]*\s*/i, '')
   t = t.replace(ATTRIBUTION_RE, '')
   return t.replace(/\s+/g, ' ').trim()
 }

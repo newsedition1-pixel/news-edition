@@ -132,24 +132,35 @@ export async function searchRecent(cfg: XKeys, deps: SendDeps, query: string): P
 }
 
 /**
- * Posts matching `query` that are newer than `sinceId` (up to 20 are read; with a cursor X returns, and bills, only new posts).
- * `newestId` is the cursor for the next read. Used by the breaking-post alerts (xposts.ts).
+ * New posts for each of `queries` (up to 20 per search; with a cursor X returns, and bills, only posts newer than `sinceId`).
+ * `newestId` is the cursor for the next read; it is left out when one search failed, so what that search missed is asked for
+ * again (posts already seen are dropped by id). A string result means every search failed. Used by the breaking-post sources (xposts.ts).
  */
-export async function searchSince(cfg: XKeys, deps: SendDeps, query: string, sinceId?: string): Promise<{ tweets: DeskTweet[]; newestId?: string } | string> {
-  try {
-    const params: Record<string, string> = {
-      query,
-      max_results: '20',
-      'tweet.fields': 'author_id,created_at,public_metrics',
-      expansions: 'author_id',
-      'user.fields': 'username,name,public_metrics',
+export async function searchPosts(cfg: XKeys, deps: SendDeps, queries: string[], sinceId?: string): Promise<{ tweets: DeskTweet[]; newestId?: string; errors: string[] } | string> {
+  const one = async (query: string): Promise<{ tweets: DeskTweet[]; newestId?: string } | string> => {
+    try {
+      const params: Record<string, string> = {
+        query,
+        max_results: '20',
+        'tweet.fields': 'author_id,created_at,public_metrics',
+        expansions: 'author_id',
+        'user.fields': 'username,name,public_metrics',
+      }
+      if (sinceId) params.since_id = sinceId
+      const r = await request(cfg, deps, 'GET', '/tweets/search/recent', params)
+      return r.status === 200 ? { tweets: parseDeskTweets(r.body), newestId: (r.body as Page).meta?.newest_id } : why(r)
+    } catch (e) {
+      return message(e)
     }
-    if (sinceId) params.since_id = sinceId
-    const r = await request(cfg, deps, 'GET', '/tweets/search/recent', params)
-    return r.status === 200 ? { tweets: parseDeskTweets(r.body), newestId: (r.body as Page).meta?.newest_id } : why(r)
-  } catch (e) {
-    return message(e)
   }
+  const results = await Promise.all(queries.map(one))
+  const errors = results.filter((r): r is string => typeof r === 'string')
+  const ok = results.filter((r): r is { tweets: DeskTweet[]; newestId?: string } => typeof r !== 'string')
+  if (ok.length === 0) return errors[0] ?? 'no search was made'
+  const byId = new Map(ok.flatMap((r) => r.tweets).map((t) => [t.id, t]))
+  const ids = ok.map((r) => r.newestId).filter((id): id is string => !!id && /^\d+$/.test(id))
+  const newestId = errors.length || ids.length === 0 ? undefined : ids.reduce((x, y) => (BigInt(x) >= BigInt(y) ? x : y))
+  return { tweets: [...byId.values()], newestId, errors }
 }
 
 /** One reply to a post whose author mentioned or quoted the account (the only case the X API allows). */

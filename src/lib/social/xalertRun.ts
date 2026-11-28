@@ -10,8 +10,8 @@ import { breakingCandidates } from '@/lib/news/breaking'
 import { PUBLISHERS } from '@/lib/news/publishers'
 import type { Story } from '@/lib/news/cluster'
 import { loadChannelConfig, secretsOf, sendX } from './channels'
-import { searchSince } from './xread'
-import { confirmPost, parsePostState, POST_STATE_KEY, postCandidates, postQuery, postSources, readTooSoon, stillPending, type FeedClaim, type PostCandidate } from './xposts'
+import { searchPosts } from './xread'
+import { confirmPost, parsePostState, POST_STATE_KEY, postCandidates, postQueries, postSources, readTooSoon, stillPending, type FeedClaim, type PostCandidate } from './xposts'
 import { parseLog, scrub } from './log'
 import { askJson } from './xwriter'
 import { xBreakingMinPublishers, xDailyCap, xDay, xModeOf } from './xplan'
@@ -153,10 +153,11 @@ export async function runXAlerts(opts: { stories?: Story[]; now?: Date } = {}): 
       let readAt = state.readAt
       let fresh: PostCandidate[] = []
       if (!readTooSoon(state, now)) {
-        const read = await searchSince(xKeys, deps, postQuery(handles), state.sinceId)
+        const read = await searchPosts(xKeys, deps, postQueries(handles), state.sinceId)
         readAt = now.toISOString()
         if (typeof read === 'string') notes.push(`X post read failed: ${scrub(read, secrets)}`)
         else {
+          if (read.errors.length) notes.push(`X post read partly failed: ${scrub(read.errors[0], secrets)}`)
           sinceId = read.newestId ?? sinceId
           fresh = postCandidates(read.tweets, now, handles)
         }

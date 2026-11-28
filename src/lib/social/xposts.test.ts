@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  cleanPostText, confirmPost, isBreakingPost, orgOfHandle, orgOfPublisher, parsePostState, POST_READ_GAP_MS, POST_SOURCES_DEFAULT, postCandidates, postQuery, postSources,
+  cleanPostText, confirmPost, isBreakingPost, orgOfHandle, orgOfPublisher, parsePostState, POST_READ_GAP_MS, POST_SOURCES_DEFAULT, postCandidates, postQueries, postSources,
   QUERY_MAX, readTooSoon, sameEvent, stillPending, type PostCandidate,
 } from './xposts'
 import type { DeskTweet } from './xreplies'
@@ -11,21 +11,33 @@ const tweet = (over: Partial<DeskTweet> = {}): DeskTweet => ({
   id: '100', username: 'ANI', name: 'ANI', text: 'BREAKING: Explosion near Red Fort in Delhi, several injured https://t.co/abc', createdAt: '2026-11-28T11:50:00Z', likes: 0, replies: 0, followers: 1000, ...over,
 })
 
-test('the source list: default, cleaned, capped', () => {
+test('the source list: default (India and the world), cleaned, capped', () => {
   assert.deepEqual(postSources(undefined), POST_SOURCES_DEFAULT)
   assert.deepEqual(postSources(''), POST_SOURCES_DEFAULT)
+  for (const h of ['ANI', 'PTI_News', 'Reuters', 'AP', 'AFP', 'BBCBreaking', 'AJEnglish', 'cnnbrk', 'SkyNews', 'DWNews']) assert.ok(POST_SOURCES_DEFAULT.includes(h), h)
   assert.deepEqual(postSources('@ANI, PTI_News ani bad-handle!'), ['ANI', 'PTI_News'])
-  assert.equal(postSources(Array.from({ length: 30 }, (_, i) => `h${i}`).join(',')).length, 12)
+  assert.equal(postSources(Array.from({ length: 30 }, (_, i) => `h${i}`).join(',')).length, 20)
 })
 
-test('the search query: handles, words, filters, always inside the limit', () => {
-  const q = postQuery(['ANI', 'PTI_News'])
-  assert.match(q, /^\(from:ANI OR from:PTI_News\) \(BREAKING OR "JUST IN"/)
-  assert.match(q, /-is:retweet -is:reply -is:quote lang:en$/)
-  const long = postQuery(Array.from({ length: 12 }, (_, i) => `LongHandleName${i}`))
-  assert.ok(long.length <= QUERY_MAX, String(long.length))
-  assert.ok(long.startsWith('(from:LongHandleName0'))
-  assert.ok(postQuery(POST_SOURCES_DEFAULT).length <= QUERY_MAX)
+test('the search queries: handles, words, filters, always inside the limit, every handle covered', () => {
+  const q = postQueries(['ANI', 'PTI_News'])
+  assert.equal(q.length, 1)
+  assert.match(q[0], /^\(from:ANI OR from:PTI_News\) \(BREAKING OR "JUST IN"/)
+  assert.match(q[0], /-is:retweet -is:reply -is:quote lang:en$/)
+  const long = postQueries(Array.from({ length: 20 }, (_, i) => `LongHandleName${i}`))
+  assert.ok(long.length >= 2)
+  for (const x of long) assert.ok(x.length <= QUERY_MAX, String(x.length))
+  for (let i = 0; i < 20; i++) assert.equal(long.filter((x) => x.includes(`from:LongHandleName${i} `) || x.includes(`from:LongHandleName${i})`)).length, 1, `handle ${i}`)
+  const all = postQueries(POST_SOURCES_DEFAULT)
+  for (const x of all) assert.ok(x.length <= QUERY_MAX)
+  for (const h of POST_SOURCES_DEFAULT) assert.equal(all.filter((x) => new RegExp(`from:${h}[ )]`).test(x)).length, 1, h)
+})
+
+test('only a real breaking mark counts: "Alert" or "Urgent" alone do not', () => {
+  assert.equal(isBreakingPost('News alert: Parliament session extended by one week'), true)
+  assert.equal(isBreakingPost('JUST IN: Prime Minister to address the nation at 8 pm'), true)
+  assert.equal(isBreakingPost('Alert: heavy rain expected in Mumbai on Sunday'), false)
+  assert.equal(isBreakingPost('Urgent appeal: please donate to the relief fund this week'), false)
 })
 
 test('the post as plain words', () => {
