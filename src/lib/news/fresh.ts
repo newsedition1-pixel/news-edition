@@ -30,3 +30,14 @@ export async function dropCoveredStories(stories: Story[]): Promise<Story[]> {
       !findSameStory({ titles: s.items.map((i) => i.title) }, lastTwoDays)
   )
 }
+
+/** True when one of our articles of the last 48 hours is about the same story as these headlines (used before an X alert: no alert for what we already published). */
+export async function isCoveredByOwnArticle(titles: string[]): Promise<boolean> {
+  const lastTwoDays = await db
+    .select({ title: articles.title, excerpt: articles.excerpt, tags: articles.tags })
+    .from(articles)
+    .where(gte(articles.createdAt, new Date(Date.now() - SAME_STORY_WINDOW_MS)))
+    .orderBy(desc(articles.createdAt))
+    .limit(300)
+  return findSameStory({ titles }, lastTwoDays) !== null
+}

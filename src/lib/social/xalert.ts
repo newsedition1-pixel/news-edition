@@ -39,6 +39,8 @@ export const ALERT_SKIPPED_RETRY_MS = 15 * 60 * 1000
 export const ALERT_LINK_WINDOW_HOURS = 12
 
 export const LINE_MIN = 50
+/** One official post is shorter than two reports put together. */
+export const LINE_MIN_SINGLE = 30
 export const LINE_MAX = 220
 export const ALERT_PREFIX_TEXT = 'BREAKING: '
 
@@ -53,6 +55,10 @@ export function alertDailyCap(raw: string | undefined): number {
 
 export interface AlertRecord {
   at: string
+  /** Where the alert started: `feeds` (2+ publishers) or `post` (one post of an official account, see xposts.ts). Never shown on X. */
+  source?: 'feeds' | 'post'
+  /** The X post it came from, for the log only. */
+  postId?: string
   /** Preview mode: the line was written and logged, nothing was sent. */
   dry: boolean
   /** writing: reserved, not finished (a crash leaves this and the story is never alerted twice); sent; failed; skipped (no safe line). */
@@ -128,7 +134,11 @@ export interface AlertReport {
 export interface AlertInput {
   /** One report per publisher: the headline and the feed summary, nothing else. */
   reports: AlertReport[]
+  /** One post of an official account is the only report (xposts.ts): one report is then enough to agree with itself. */
+  single?: boolean
 }
+
+const needed = (input: AlertInput) => (input.single ? 1 : 2)
 
 const reportText = (r: AlertReport) => `${plain(r.title)}. ${plain(r.summary)}`.trim()
 
@@ -174,7 +184,8 @@ export function checkAlertLine(line: string, input: AlertInput, publisherNames: 
   const texts = input.reports.map(reportText)
   const source = texts.join('\n')
 
-  if (line.length < LINE_MIN || line.length > LINE_MAX) issues.push(`The line must be ${LINE_MIN} to ${LINE_MAX} characters (it is ${line.length}).`)
+  const lineMin = input.single ? LINE_MIN_SINGLE : LINE_MIN
+  if (line.length < lineMin || line.length > LINE_MAX) issues.push(`The line must be ${lineMin} to ${LINE_MAX} characters (it is ${line.length}).`)
   if (/^breaking\b/i.test(line)) issues.push('Do not start with "Breaking": the code adds it.')
   if (CLICKBAIT_RE.test(line)) issues.push('The line uses clickbait wording.')
   if (/!/.test(line)) issues.push('The line has an exclamation mark.')
@@ -188,13 +199,14 @@ export function checkAlertLine(line: string, input: AlertInput, publisherNames: 
   if (names.length) issues.push(`The line names things that are not in the reports: ${names.join(', ')}.`)
 
   // A number is only safe when independent reports agree on it: counts of the dead and injured change fast and differ between outlets.
+  const need = needed(input)
   const digitTexts = texts.map((t) => figureSet(withDigits(t)))
-  const unconfirmed = [...figureSet(withDigits(line))].filter((f) => digitTexts.filter((set) => set.has(f)).length < 2)
-  if (unconfirmed.length) issues.push(`These numbers are not given by at least two reports: ${unconfirmed.join(', ')}. Leave them out or use only numbers that two reports give.`)
+  const unconfirmed = [...figureSet(withDigits(line))].filter((f) => digitTexts.filter((set) => set.has(f)).length < need)
+  if (unconfirmed.length) issues.push(`These numbers are not given by ${need === 1 ? 'the post' : 'at least two reports'}: ${unconfirmed.join(', ')}. Leave them out or use only numbers that ${need === 1 ? 'the post gives' : 'two reports give'}.`)
 
   const strong = [...new Set((line.match(STRONG_CLAIM_RE) ?? []).map((w) => w.toLowerCase()))]
-  const unsupported = strong.filter((w) => texts.filter((t) => new RegExp(`\\b${escapeRegExp(w)}`, 'i').test(t)).length < 2)
-  if (unsupported.length) issues.push(`These strong words are not used by at least two reports: ${unsupported.join(', ')}. Describe the event plainly instead.`)
+  const unsupported = strong.filter((w) => texts.filter((t) => new RegExp(`\\b${escapeRegExp(w)}`, 'i').test(t)).length < need)
+  if (unsupported.length) issues.push(`These strong words are not used by ${need === 1 ? 'the post' : 'at least two reports'}: ${unsupported.join(', ')}. Describe the event plainly instead.`)
 
   if (copyStats(source, line).longestRun >= 8) issues.push('The line copies a run of 8 or more words from a report. Say it in your own words.')
   return issues
@@ -203,17 +215,21 @@ export function checkAlertLine(line: string, input: AlertInput, publisherNames: 
 export function buildAlertPrompt(input: AlertInput): { system: string; user: string } {
   const system = [
     'You write the first line of a breaking-news alert for NewsEdition, an Indian news site, on X (Twitter).',
-    'You are given the headlines and short summaries that several independent news organisations have just published about the same event.',
-    'Write ONE plain sentence that says what happened, using only what these reports state. Nothing from memory, no background, no guesses.',
-    'Return JSON: {"line": string}, or {"line": null} when the reports do not clearly describe the same event or do not agree enough for a safe one-line alert.',
-    `line: ${LINE_MIN} to ${LINE_MAX} characters, in your own words (never copy a headline), who/what/where first, plain active voice, same language as the headlines.`,
-    'Numbers: write numerals, and only a number that at least two reports give. If the reports differ on a number, leave the number out.',
+    input.single
+      ? 'You are given ONE breaking post that an official news organisation has just published. Say the same news in your own words.'
+      : 'You are given the headlines and short summaries that several independent news organisations have just published about the same event.',
+    `Write ONE plain sentence that says what happened, using only what ${input.single ? 'the post states' : 'these reports state'}. Nothing from memory, no background, no guesses.`,
+    input.single
+      ? 'Return JSON: {"line": string}, or {"line": null} when the post is not a clear, complete piece of news (a question, an opinion, a promo, a quote without the news).'
+      : 'Return JSON: {"line": string}, or {"line": null} when the reports do not clearly describe the same event or do not agree enough for a safe one-line alert.',
+    `line: ${input.single ? LINE_MIN_SINGLE : LINE_MIN} to ${LINE_MAX} characters, in your own words (never copy a headline), who/what/where first, plain active voice, same language as the headlines.`,
+    input.single ? 'Numbers: write numerals, and only a number that is in the post.' : 'Numbers: write numerals, and only a number that at least two reports give. If the reports differ on a number, leave the number out.',
     'Never name a newspaper, channel, agency, website or journalist, and never write "reportedly", "sources say" or "according to".',
-    'Do not give a cause, blame, motive, suspect or "terror"/"murder"/"massacre" unless at least two reports use that word.',
+    `Do not give a cause, blame, motive, suspect or "terror"/"murder"/"massacre" unless ${input.single ? 'the post uses' : 'at least two reports use'} that word.`,
     'No "Breaking" (the code adds it), no clickbait, no exclamation marks, no capital-letter shouting, no emoji, no hashtags, no links.',
   ].join('\n')
   const user = input.reports
-    .map((r, i) => `Report ${i + 1}: ${plain(r.title)}${plain(r.summary) ? `\nSummary ${i + 1}: ${plain(r.summary).slice(0, 320)}` : ''}`)
+    .map((r, i) => `${input.single ? 'Post' : `Report ${i + 1}`}: ${plain(r.title)}${plain(r.summary) ? `\nSummary ${i + 1}: ${plain(r.summary).slice(0, 320)}` : ''}`)
     .join('\n\n')
   return { system, user }
 }
@@ -227,7 +243,7 @@ export async function writeAlertLine(
   input: AlertInput,
   publisherNames: string[],
 ): Promise<{ line: string | null; issues: string[] }> {
-  if (input.reports.length < 2) return { line: null, issues: ['An alert needs reports from at least two publishers.'] }
+  if (input.reports.length < needed(input)) return { line: null, issues: ['An alert needs reports from at least two publishers.'] }
   const { system, user } = buildAlertPrompt(input)
   const messages: Message[] = [{ role: 'system', content: system }, { role: 'user', content: user }]
   let issues: string[] = []

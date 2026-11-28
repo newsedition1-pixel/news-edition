@@ -4,17 +4,19 @@ import { settings } from '@/lib/db/schema'
 import { and, eq, like, lt, or } from 'drizzle-orm'
 import { getSetting, getSocialMode, setSetting, SOCIAL_LOG_KEY } from '@/lib/settings'
 import { discoverStories } from '@/lib/news/feeds'
-import { dropCoveredStories } from '@/lib/news/fresh'
+import { dropCoveredStories, isCoveredByOwnArticle } from '@/lib/news/fresh'
 import { breakingCandidates } from '@/lib/news/breaking'
 import { PUBLISHERS } from '@/lib/news/publishers'
 import type { Story } from '@/lib/news/cluster'
 import { loadChannelConfig, secretsOf, sendX } from './channels'
+import { searchSince } from './xread'
+import { parsePostState, POST_STATE_KEY, postCandidates, postQuery, postSources, readTooSoon } from './xposts'
 import { parseLog, scrub } from './log'
 import { askJson } from './xwriter'
 import { xBreakingMinPublishers, xDailyCap, xDay, xModeOf } from './xplan'
 import {
   ALERT_DRY_PREFIX, ALERT_KEEP_DAYS, ALERT_MAX_AGE_HOURS, ALERT_PREFIX, ALERT_SKIPPED_RETRY_MS, ALERTS_PER_RUN, alertDailyCap, alertKeyOf, alertsToday,
-  alertTweetText, isAlerted, matchAlertForArticle, parseAlertRecord, writeAlertLine, type AlertRecord,
+  alertTweetText, isAlerted, matchAlertForArticle, parseAlertRecord, writeAlertLine, type AlertInput, type AlertRecord,
 } from './xalert'
 
 /**
@@ -80,61 +82,89 @@ export async function runXAlerts(opts: { stories?: Story[]; now?: Date } = {}): 
     if (xModeOf(process.env.X_MODE) !== 'breaking') return { ran: false, message: 'X alerts only run in X_MODE=breaking.' }
     const dry = mode === 'dry'
     const now = opts.now ?? new Date()
-
-    const stories = opts.stories ?? (await discoverStories('')).stories
-    const minPublishers = xBreakingMinPublishers(process.env.X_BREAKING_MIN_PUBLISHERS)
-    const candidates = breakingCandidates(stories, now.getTime(), minPublishers, ALERT_MAX_AGE_HOURS)
-    if (candidates.length === 0) return { ran: true, message: 'No breaking story to announce.' }
+    const xKeys = cfg.x
 
     const [allRows, shareLog] = await Promise.all([loadRows(), getSetting(SOCIAL_LOG_KEY).then(parseLog)])
     // A story that had no safe line a while ago may have one now (more reports, agreeing numbers): let it be tried again.
     const stale = allRows.filter((r) => r.rec.status === 'skipped' && now.getTime() - new Date(r.rec.at).getTime() > ALERT_SKIPPED_RETRY_MS)
     await Promise.all(stale.map((r) => db.delete(settings).where(eq(settings.key, r.key))))
-    const rows = allRows.filter((r) => !stale.includes(r))
-    const records = rows.map((r) => r.rec)
+    const records = allRows.filter((r) => !stale.includes(r)).map((r) => r.rec)
     // The day's budget: the alert cap, and X_DAILY_CAP over article tweets and alerts together.
     const sentToday = alertsToday(records, now, dry)
     const room = Math.min(alertDailyCap(process.env.X_ALERT_DAILY_CAP) - sentToday, xDailyCap(process.env.X_DAILY_CAP) - xDay(shareLog, now, dry).posts - sentToday, ALERTS_PER_RUN)
     if (room <= 0) return { ran: true, message: `Alert budget used up today (${sentToday} sent).` }
 
-    // A story we already wrote about is covered by its own article tweet.
-    const open = (await dropCoveredStories(candidates)).filter((s) => !isAlerted(records, s.items.map((i) => i.title), dry))
-    if (open.length === 0) return { ran: true, message: 'Every breaking story is already announced or covered.' }
-
     prune(now).catch(() => undefined)
     const names = PUBLISHERS.map((p) => p.name)
     const secrets = secretsOf(cfg)
+    const deps = { fetch: (url: string, init?: RequestInit) => fetch(url, init) }
     const notes: string[] = []
     let sent = 0
-    for (const story of open) {
-      if (sent >= room) break
-      const key = alertKeyOf(story.lead.title, dry)
-      const base: AlertRecord = { at: now.toISOString(), dry, status: 'writing', titles: story.items.map((i) => i.title) }
-      if (!(await reserve(key, base))) continue
 
-      const { line, issues } = await writeAlertLine((messages) => askJson(messages, 300), { reports: story.items.map((i) => ({ title: i.title, summary: i.summary })) }, names)
+    /** Writes the line for a story this run has reserved, and tweets it (preview: logs it). True when an alert went out. */
+    const announce = async (key: string, base: AlertRecord, input: AlertInput, label: string): Promise<boolean> => {
+      const { line, issues } = await writeAlertLine((messages) => askJson(messages, 300), input, names)
       if (!line) {
         const reason = issues.join(' ').slice(0, 300)
         await save(key, { ...base, status: 'skipped', reason })
-        notes.push(`${story.lead.title.slice(0, 60)}: no alert (${reason})`)
-        continue
+        notes.push(`${label.slice(0, 60)}: no alert (${reason})`)
+        return false
       }
       const text = alertTweetText(line)
       if (dry) {
         await save(key, { ...base, status: 'sent', text, reason: 'preview only' })
         notes.push(`(preview) ${text}`)
-        sent++
-        continue
+        return true
       }
-      const result = await sendX(cfg.x, { text, hashtags: [], link: null, imageUrl: null, poll: null }, { fetch: (url, init) => fetch(url, init) })
+      const result = await sendX(xKeys, { text, hashtags: [], link: null, imageUrl: null, poll: null }, deps)
       if (result.ok && result.ref) {
         await save(key, { ...base, status: 'sent', text, tweetId: result.ref })
         notes.push(`sent: ${text}`)
-        sent++
-      } else {
-        const error = scrub(result.error ?? 'unknown error', secrets).slice(0, 240)
-        await save(key, { ...base, status: 'failed', text, error })
-        notes.push(`FAILED: ${error}`)
+        return true
+      }
+      const error = scrub(result.error ?? 'unknown error', secrets).slice(0, 240)
+      await save(key, { ...base, status: 'failed', text, error })
+      notes.push(`FAILED: ${error}`)
+      return false
+    }
+
+    // 1. A story 2+ trusted publishers carry (their feeds).
+    const stories = opts.stories ?? (await discoverStories('')).stories
+    const minPublishers = xBreakingMinPublishers(process.env.X_BREAKING_MIN_PUBLISHERS)
+    const candidates = breakingCandidates(stories, now.getTime(), minPublishers, ALERT_MAX_AGE_HOURS)
+    // A story we already wrote about is covered by its own article tweet.
+    const open = candidates.length ? (await dropCoveredStories(candidates)).filter((s) => !isAlerted(records, s.items.map((i) => i.title), dry)) : []
+    for (const story of open) {
+      if (sent >= room) break
+      const key = alertKeyOf(story.lead.title, dry)
+      const base: AlertRecord = { at: now.toISOString(), dry, status: 'writing', titles: story.items.map((i) => i.title), source: 'feeds' }
+      if (!(await reserve(key, base))) continue
+      records.push(base)
+      if (await announce(key, base, { reports: story.items.map((i) => ({ title: i.title, summary: i.summary })) }, story.lead.title)) sent++
+    }
+
+    // 2. One breaking post of an official news organisation on X (xposts.ts): the story need not be on a website yet.
+    if (sent < room && (process.env.X_ALERT_POSTS ?? '').trim().toLowerCase() !== 'off') {
+      const handles = postSources(process.env.X_BREAKING_SOURCES)
+      const state = parsePostState(await getSetting(POST_STATE_KEY))
+      if (!readTooSoon(state, now)) {
+        const read = await searchSince(xKeys, deps, postQuery(handles), state.sinceId)
+        if (typeof read === 'string') {
+          notes.push(`X post read failed: ${scrub(read, secrets)}`)
+          await setSetting(POST_STATE_KEY, JSON.stringify({ ...state, readAt: now.toISOString() }))
+        } else {
+          await setSetting(POST_STATE_KEY, JSON.stringify({ sinceId: read.newestId ?? state.sinceId, readAt: now.toISOString() }))
+          for (const post of postCandidates(read.tweets, now, handles)) {
+            if (sent >= room) break
+            const titles = [post.text]
+            if (isAlerted(records, titles, dry) || (await isCoveredByOwnArticle(titles))) continue
+            const key = alertKeyOf(post.text, dry)
+            const base: AlertRecord = { at: now.toISOString(), dry, status: 'writing', titles, source: 'post', postId: `${post.username}/${post.id}` }
+            if (!(await reserve(key, base))) continue
+            records.push(base)
+            if (await announce(key, base, { reports: [{ title: post.text, summary: '' }], single: true }, post.text)) sent++
+          }
+        }
       }
     }
     return { ran: true, message: notes.length ? notes.join(' | ') : 'Nothing to announce.' }

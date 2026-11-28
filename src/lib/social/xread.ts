@@ -131,6 +131,27 @@ export async function searchRecent(cfg: XKeys, deps: SendDeps, query: string): P
   }
 }
 
+/**
+ * Posts matching `query` that are newer than `sinceId` (up to 20 are read; with a cursor X returns, and bills, only new posts).
+ * `newestId` is the cursor for the next read. Used by the breaking-post alerts (xposts.ts).
+ */
+export async function searchSince(cfg: XKeys, deps: SendDeps, query: string, sinceId?: string): Promise<{ tweets: DeskTweet[]; newestId?: string } | string> {
+  try {
+    const params: Record<string, string> = {
+      query,
+      max_results: '20',
+      'tweet.fields': 'author_id,created_at,public_metrics',
+      expansions: 'author_id',
+      'user.fields': 'username,name,public_metrics',
+    }
+    if (sinceId) params.since_id = sinceId
+    const r = await request(cfg, deps, 'GET', '/tweets/search/recent', params)
+    return r.status === 200 ? { tweets: parseDeskTweets(r.body), newestId: (r.body as Page).meta?.newest_id } : why(r)
+  } catch (e) {
+    return message(e)
+  }
+}
+
 /** One reply to a post whose author mentioned or quoted the account (the only case the X API allows). */
 export async function postReply(cfg: XKeys, deps: SendDeps, text: string, toId: string): Promise<SendResult> {
   try {
