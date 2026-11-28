@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decidePlacement, type PlacementContext, type PlacementInput } from './placement'
+import { decidePlacement, isUrgentHeadline, type PlacementContext, type PlacementInput } from './placement'
 
 const open: PlacementContext = { breakingNow: 0, featuredToday: 0, featuredTodayInCategory: 0 }
 const strong: PlacementInput = { publishers: 3, title: 'Policy review ordered after budget talks', wordCount: 820, cover: 'publisher', auditScore: 90 }
@@ -45,4 +45,29 @@ test('a story can be both breaking and featured', () => {
   const p = decidePlacement({ ...strong, title: 'Earthquake of magnitude 6 hits northern Pakistan, tremors in Delhi' }, open)
   assert.equal(p.breaking, true)
   assert.equal(p.featured, true)
+})
+
+test('28 Nov 2026: world events count as urgent headlines (shootings, bombings, missiles, quakes, coups, deaths of notable people)', () => {
+  for (const t of [
+    'Gunman opens fire at shopping mall in Texas, several hurt',
+    'Missiles hit Kyiv overnight as Russia widens its air strikes',
+    'Magnitude 7.1 quake strikes off Japan coast, tsunami warning issued',
+    'Military seizes power in coup, president detained',
+    'Veteran actor passes away at 84 after a long illness',
+    'Stampede at temple festival leaves many injured',
+    'Train derails near Lucknow, rescue under way',
+  ]) {
+    assert.equal(isUrgentHeadline(t), true, t)
+  }
+})
+
+test('28 Nov 2026: ordinary headlines are still not urgent', () => {
+  for (const t of [
+    'Budget session begins with a debate on tax relief',
+    'RBI keeps repo rate unchanged for the fourth time',
+    'Tech giant unveils new phone with a faster chip',
+    'Local team wins the district cricket final',
+  ]) {
+    assert.equal(isUrgentHeadline(t), false, t)
+  }
 })

@@ -47,8 +47,10 @@ export const FEATURED_MIN_AUDIT = 80
 export const FEATURED_MAX_PER_DAY = 6
 export const FEATURED_MAX_PER_CATEGORY_PER_DAY = 2
 
+// Widened on 28 Nov 2026 (owner: whatever breaks anywhere in the world should reach X): quakes, tsunamis, landslides,
+// stampedes, wildfires, shootings, bombings, missiles, air strikes, invasions, coups, martial law, a notable person's death.
 const URGENT_RE =
-  /\b(killed|dead|dies|died|death toll|deaths?|attack(?:s|ed)?|blasts?|explosions?|earthquake|cyclone|floods?|crash(?:es|ed)?|collapse[sd]?|arrested|resigns?|resignation|ceasefire|airstrikes?|verdict|sentenced|dissolved|curfew|evacuat\w+|hostages?|assassinat\w+|terror\w*|massacre|shot dead|lockdown)\b/i
+  /\b(killed|dead|dies|died|passes away|passed away|demise|death toll|deaths?|attack(?:s|ed)?|blasts?|explosions?|bombings?|bombs?|missiles?|drone strikes?|air ?strikes?|gunmen|gunman|shooting|earthquake|quakes?|tsunami|cyclone|floods?|landslides?|stampede|wildfires?|derail\w*|hijack\w*|crash(?:es|ed)?|collapse[sd]?|capsiz\w+|arrested|resigns?|resignation|ceasefire|invasion|invade[sd]?|coup|martial law|state of emergency|verdict|sentenced|dissolved|curfew|evacuat\w+|hostages?|assassinat\w+|terror\w*|massacre|shot dead|lockdown)\b/i
 
 /** The headline reports something urgent (a death, attack, disaster, arrest, verdict ...). Also used by the X planner. */
 export function isUrgentHeadline(title: string): boolean {
